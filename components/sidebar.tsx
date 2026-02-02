@@ -40,7 +40,6 @@ const navigationItems = [
     path: "/dashboard/business-activities/products-services",
     subItems: [
       { name: "Products & Services", path: "/dashboard/business-activities/products-services" },
-      { name: "Cross Border Matrix", path: "/dashboard/business-activities/cross-border-matrix" },
     ],
   },
   {
