@@ -17,6 +17,7 @@ import {
   ShieldCheck,
   LayoutDashboard,
   BookOpen,
+  Settings2,
 } from "lucide-react"
 
 const navigationItems = [
@@ -44,6 +45,17 @@ const navigationItems = [
   },
   {
     id: 3,
+    name: "Operations",
+    icon: Settings2,
+    color: "text-indigo-400",
+    path: "/dashboard/operations/roles-responsibilities",
+    subItems: [
+      { name: "Roles & Responsibilities", path: "/dashboard/operations/roles-responsibilities" },
+      { name: "Procedures", path: "/dashboard/operations/procedures" },
+    ],
+  },
+  {
+    id: 5,
     name: "Obligations & Risk",
     icon: AlertTriangle,
     color: "text-yellow-400",
@@ -51,7 +63,7 @@ const navigationItems = [
     subItems: [],
   },
   {
-    id: 4,
+    id: 6,
     name: "Governance",
     icon: Scale,
     color: "text-purple-400",
@@ -62,7 +74,7 @@ const navigationItems = [
     ],
   },
   {
-    id: 5,
+    id: 7,
     name: "RegTech & Data",
     icon: Database,
     color: "text-green-400",
@@ -70,7 +82,7 @@ const navigationItems = [
     subItems: [],
   },
   {
-    id: 6,
+    id: 8,
     name: "Standard Operating Procedures",
     icon: FileText,
     color: "text-orange-400",
@@ -78,7 +90,7 @@ const navigationItems = [
     subItems: [],
   },
   {
-    id: 7,
+    id: 9,
     name: "Assurance & Remediation",
     icon: CheckCircle2,
     color: "text-pink-400",
@@ -86,7 +98,7 @@ const navigationItems = [
     subItems: [],
   },
   {
-    id: 8,
+    id: 10,
     name: "Glossary",
     icon: BookOpen,
     color: "text-teal-400",
