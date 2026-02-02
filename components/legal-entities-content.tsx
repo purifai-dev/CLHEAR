@@ -646,55 +646,6 @@ export function LegalEntitiesContent() {
               </div>
             </div>
 
-            <div className="space-y-4 p-4 bg-muted/30 rounded-lg">
-              <h4 className="text-sm font-semibold text-foreground flex items-center gap-2">
-                <ExternalLink className="w-4 h-4" />
-                Additional Identifiers
-              </h4>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* BIC Code */}
-                <div>
-                  <Label className="text-sm font-medium">BIC Code</Label>
-                  <Input
-                    value={entity.bicCode}
-                    onChange={(e) => updateEntity(entity.id, { bicCode: e.target.value })}
-                    placeholder="e.g., ETORGB21XXX"
-                  />
-                </div>
-
-                {/* OpenCorporates ID */}
-                <div>
-                  <Label className="text-sm font-medium">OpenCorporates ID</Label>
-                  <Input
-                    value={entity.openCorporatesId}
-                    onChange={(e) => updateEntity(entity.id, { openCorporatesId: e.target.value })}
-                    placeholder="e.g., gb/07973792"
-                  />
-                </div>
-
-                {/* QCC Code */}
-                <div>
-                  <Label className="text-sm font-medium">QCC Code</Label>
-                  <Input
-                    value={entity.qccCode}
-                    onChange={(e) => updateEntity(entity.id, { qccCode: e.target.value })}
-                    placeholder="e.g., QGB45FP0FM"
-                  />
-                </div>
-
-                {/* S&P CIQ Company ID */}
-                <div>
-                  <Label className="text-sm font-medium">S&P CIQ Company ID</Label>
-                  <Input
-                    value={entity.spCiqCompanyId}
-                    onChange={(e) => updateEntity(entity.id, { spCiqCompanyId: e.target.value })}
-                    placeholder="e.g., 635849470"
-                  />
-                </div>
-              </div>
-            </div>
-
             {/* Parent Entity (only for subsidiaries) */}
             {entity.entityType === "subsidiary" && (
               <div>
