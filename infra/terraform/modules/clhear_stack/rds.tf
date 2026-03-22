@@ -32,6 +32,17 @@ resource "aws_security_group" "rds" {
     protocol        = "tcp"
     security_groups = [aws_security_group.ecs_tasks.id]
   }
+
+  dynamic "ingress" {
+    for_each = trimspace(var.bastion_security_group_id) != "" ? [1] : []
+    content {
+      from_port       = 5432
+      to_port         = 5432
+      protocol        = "tcp"
+      security_groups = [var.bastion_security_group_id]
+    }
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -81,14 +92,4 @@ resource "aws_rds_cluster_instance" "main" {
   publicly_accessible = false
 
   tags = merge(local.tags, { Name = "${var.name_prefix}-aurora-1" })
-}
-
-resource "aws_security_group_rule" "rds_from_bastion" {
-  count                    = trimspace(var.bastion_security_group_id) != "" ? 1 : 0
-  type                     = "ingress"
-  from_port                = 5432
-  to_port                  = 5432
-  protocol                 = "tcp"
-  source_security_group_id = var.bastion_security_group_id
-  security_group_id        = aws_security_group.rds.id
 }
