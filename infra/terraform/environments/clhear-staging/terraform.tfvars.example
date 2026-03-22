@@ -35,3 +35,6 @@ app_base_url = "https://clhear.ai"
 # smtp_host = "email-smtp.us-east-1.amazonaws.com"
 # smtp_user = "AKIAXXXXXXXX"
 # smtp_pass = "your-smtp-secret"
+
+# Anthropic / Claude — secret must exist in Secrets Manager (console); Terraform wires it to ECS.
+# anthropic_secret_name = "Anthropic-clhear"

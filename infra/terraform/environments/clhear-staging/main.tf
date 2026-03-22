@@ -37,6 +37,8 @@ module "clhear" {
 
   github_repository = var.github_repository
 
+  anthropic_secret_name = var.anthropic_secret_name
+
   tags = {
     Environment = var.environment
   }

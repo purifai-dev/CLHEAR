@@ -139,3 +139,9 @@ variable "bastion_security_group_id" {
   type        = string
   default     = ""
 }
+
+variable "anthropic_secret_name" {
+  description = "Secrets Manager secret name (not the value) for Anthropic API key. Injected as ANTHROPIC_API_KEY. Empty skips."
+  type        = string
+  default     = ""
+}

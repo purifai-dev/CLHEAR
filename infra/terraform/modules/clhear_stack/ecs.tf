@@ -1,3 +1,9 @@
+# Pre-existing secret (e.g. created in console) — lookup by friendly name
+data "aws_secretsmanager_secret" "anthropic" {
+  count = trimspace(var.anthropic_secret_name) != "" ? 1 : 0
+  name  = trimspace(var.anthropic_secret_name)
+}
+
 resource "aws_ecs_cluster" "main" {
   name = var.name_prefix
   setting {
@@ -19,6 +25,9 @@ locals {
     [{ name = "DATABASE_URL", valueFrom = aws_secretsmanager_secret.database_url.arn }],
     length(aws_secretsmanager_secret.smtp_pass) > 0 ? [
       { name = "SMTP_PASS", valueFrom = aws_secretsmanager_secret.smtp_pass[0].arn }
+    ] : [],
+    length(data.aws_secretsmanager_secret.anthropic) > 0 ? [
+      { name = "ANTHROPIC_API_KEY", valueFrom = data.aws_secretsmanager_secret.anthropic[0].arn }
     ] : []
   )
 
