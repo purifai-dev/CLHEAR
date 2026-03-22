@@ -521,6 +521,15 @@ def get_source(source_id: str, conn: Connection = Depends(get_db)):
             }
             for o in obligations
         ],
+        "related_regulatory_items": [
+            {
+                "item_code": ri[0],
+                "title": ri[1],
+                "item_type": ri[2],
+                "importance": ri[3],
+            }
+            for ri in related_items
+        ],
     }
 
 

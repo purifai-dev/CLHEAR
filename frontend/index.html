@@ -621,6 +621,16 @@ function severityBadge(s) {
   return html`<span class="badge ${cls}">${s}</span>`;
 }
 
+function importanceBadge(s) {
+  return severityBadge(s);
+}
+
+function itemTypeBadge(t) {
+  if (!t) return html`<span class="badge badge-default">--</span>`;
+  const short = t.replace(/_/g, ' ');
+  return html`<span class="badge badge-info" title=${t}>${short}</span>`;
+}
+
 function statusBadge(s) {
   if (!s) return html`<span class="badge badge-default">--</span>`;
   const cls = s === 'success' ? 'badge-success' : s === 'error' ? 'badge-error' : s === 'running' ? 'badge-running' : 'badge-default';
@@ -913,7 +923,289 @@ function SourceModal({ item, onClose }) {
             `)}
           </div>
         `}
+        ${item.related_regulatory_items && item.related_regulatory_items.length > 0 && html`
+          <div class="section-title">AI Regulatory Items (${item.related_regulatory_items.length})</div>
+          <div class="related-obligations">
+            ${item.related_regulatory_items.map(ri => html`
+              <div class="related-chip" key=${ri.item_code}>
+                <span class="chip-code">${ri.item_code}</span>
+                ${importanceBadge(ri.importance)}
+                <span class="dimmed" style=${{ fontSize: '11px' }}>${ri.item_type}</span>
+                <span>${ri.title}</span>
+              </div>
+            `)}
+          </div>
+        `}
       </div>
+    </div>
+  `;
+}
+
+// ============================================================
+// RegulatoryItemModal
+// ============================================================
+
+function RegulatoryItemModal({ item, onClose }) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return html`
+    <div class="modal-overlay" onClick=${(e) => e.target === e.currentTarget && onClose()}>
+      <div class="modal" style=${{ maxWidth: '820px' }}>
+        <button class="modal-close" onClick=${onClose}>X</button>
+        <h2>${item.title || item.item_code}</h2>
+        <div class="sub">${item.item_code} | ${item.rule_reference || ''}</div>
+
+        <div class="field-grid">
+          <div class="field"><label>Regulator</label><span>${item.regulator || '--'}</span></div>
+          <div class="field"><label>Item type</label><span>${itemTypeBadge(item.item_type)}</span></div>
+          <div class="field"><label>Category</label><span>${item.category || '--'}</span></div>
+          <div class="field"><label>Importance</label><span>${importanceBadge(item.importance)}</span></div>
+          <div class="field"><label>Pillar ID</label><span>${item.pillar_id ?? '--'}</span></div>
+          <div class="field"><label>Source rule</label><span style=${{ fontFamily: 'var(--mono)', fontSize: '12px' }}>${item.source_rule_number || '--'}</span></div>
+          <div class="field"><label>Analysis</label><span>${item.analysis_version || '--'}</span></div>
+          <div class="field"><label>Analyzed</label><span>${fmtDate(item.analyzed_at)}</span></div>
+        </div>
+
+        ${item.source_url && html`
+          <a class="source-link" href=${item.source_url} target="_blank" rel="noopener">
+            View FINRA source page ->
+          </a>
+        `}
+
+        ${item.summary && html`
+          <div class="section-title">Summary</div>
+          <p style=${{ fontSize: '13px', lineHeight: '1.6' }}>${item.summary}</p>
+        `}
+
+        ${item.importance_reasoning && html`
+          <div class="section-title">Importance reasoning</div>
+          <div class="reasoning-box">${item.importance_reasoning}</div>
+        `}
+
+        ${item.evidence_excerpt && html`
+          <div class="section-title">Evidence (from rule text)</div>
+          <pre class="rule-text" style=${{ borderLeft: '3px solid var(--accent)', paddingLeft: '12px' }}>${item.evidence_excerpt}</pre>
+        `}
+
+        ${item.description && html`
+          <div class="section-title">Full description</div>
+          <p style=${{ fontSize: '13px', lineHeight: '1.65', whiteSpace: 'pre-wrap' }}>${item.description}</p>
+        `}
+
+        ${item.tags && item.tags.length > 0 && html`
+          <div class="section-title">Tags</div>
+          <div style=${{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+            ${item.tags.map((t) => html`<span class="badge badge-default" key=${t}>${t}</span>`)}
+          </div>
+        `}
+
+        ${item.applicability && Object.keys(item.applicability).length > 0 && html`
+          <div class="section-title">Applicability</div>
+          <pre class="json-block">${JSON.stringify(item.applicability, null, 2)}</pre>
+        `}
+
+        ${item.source_rule && html`
+          <div class="section-title">Underlying rule text (reference)</div>
+          <div class="sub">${item.source_rule.rule_title}</div>
+          <pre class="rule-text" style=${{ maxHeight: '240px', overflow: 'auto' }}>${(item.source_rule.raw_text || '').slice(0, 12000)}${(item.source_rule.raw_text || '').length > 12000 ? '\n…' : ''}</pre>
+        `}
+      </div>
+    </div>
+  `;
+}
+
+// ============================================================
+// RegulatoryItemsView
+// ============================================================
+
+function RegulatoryItemsView() {
+  const [data, setData] = useState({ items: [], total: 0, page: 1, pages: 1 });
+  const [stats, setStats] = useState(null);
+  const [filterOptions, setFilterOptions] = useState({ regulators: [], item_types: [], categories: [], importances: [] });
+  const [filters, setFilters] = useState({
+    q: '', regulator: '', item_type: '', category: '', importance: '', pillar_id: '', page: 1, sort_by: 'item_code', sort_order: 'asc',
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [selected, setSelected] = useState(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [scrapeStatus, setScrapeStatus] = useState(null);
+  const [scraping, setScraping] = useState(false);
+  const [success, setSuccess] = useState(null);
+  const debounceRef = useRef(null);
+
+  const loadMeta = useCallback(async () => {
+    try {
+      const [st, fo] = await Promise.all([
+        fetchJSON('/api/items/stats'),
+        fetchJSON('/api/items/filter-options'),
+      ]);
+      setStats(st);
+      setFilterOptions(fo);
+    } catch (e) { /* table may not exist yet */ }
+  }, []);
+
+  useEffect(() => { loadMeta(); }, [loadMeta]);
+
+  useEffect(() => {
+    fetchJSON('/api/scrape/status').then(setScrapeStatus).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!scraping) return;
+    const id = setInterval(() => {
+      fetchJSON('/api/scrape/status').then(setScrapeStatus).catch(() => {});
+    }, 3000);
+    return () => clearInterval(id);
+  }, [scraping]);
+
+  const fetchData = useCallback(async (f) => {
+    setLoading(true); setError(null);
+    try { setData(await fetchJSON('/api/items' + buildQuery(f))); }
+    catch (e) { setError(e.message); }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => fetchData(filters), 300);
+    return () => clearTimeout(debounceRef.current);
+  }, [filters, fetchData]);
+
+  const setFilter = (key, val) => setFilters((prev) => ({ ...prev, [key]: val, page: 1 }));
+  const setPage = (p) => setFilters((prev) => ({ ...prev, page: p }));
+
+  const openDetail = async (row) => {
+    setLoadingDetail(true);
+    try { setSelected(await fetchJSON('/api/items/' + encodeURIComponent(row.item_code))); }
+    catch (e) { setError(e.message); }
+    finally { setLoadingDetail(false); }
+  };
+
+  const runScrape = async () => {
+    setScraping(true); setError(null); setSuccess(null);
+    try {
+      const r = await postJSON('/api/scrape/finra', {});
+      setSuccess('Pipeline started — run ' + (r.run_id || '').slice(0, 8) + '…');
+      fetchJSON('/api/scrape/status').then(setScrapeStatus);
+    } catch (e) {
+      setError(e.message);
+      setScraping(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!scrapeStatus) return;
+    if (scrapeStatus.status === 'completed' || scrapeStatus.status === 'failed') {
+      setScraping(false);
+      loadMeta();
+      fetchData(filters);
+    }
+  }, [scrapeStatus?.status]);
+
+  const st = scrapeStatus || {};
+  const prog = st.progress || {};
+
+  return html`
+    <div>
+      <div class="section-header">
+        Regulatory items (FINRA)
+        <button class="btn btn-primary" onClick=${runScrape} disabled=${scraping || st.running}>
+          ${scraping || st.running ? 'Pipeline running…' : 'Scrape FINRA rulebook'}
+        </button>
+      </div>
+
+      ${success && html`<div class="success-banner">${success}</div>`}
+      ${error && html`<div class="error-banner">${error}</div>`}
+
+      ${(st.running || st.status === 'running' || scraping) && html`
+        <div style=${{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '14px 16px', marginBottom: '16px' }}>
+          <div style=${{ fontWeight: 600, marginBottom: '6px' }}>Scrape progress</div>
+          <div style=${{ fontSize: '13px', color: 'var(--text-dim)' }}>
+            ${prog.message || st.status || '…'}
+            ${st.rules_total ? html`<span> — ${st.rules_done || 0} / ${st.rules_total} rules</span>` : null}
+          </div>
+          ${st.items_created != null && html`<div style=${{ fontSize: '12px', marginTop: '6px' }}>Items written: ${st.items_created}</div>`}
+        </div>
+      `}
+
+      ${stats && html`
+        <div class="stat-grid" style=${{ marginBottom: '20px' }}>
+          <${StatCard} val=${stats.total} lbl="Total items" color="var(--accent)" />
+          <${StatCard} val=${Object.keys(stats.by_type || {}).length} lbl="Item types" color="var(--green)" />
+          <${StatCard} val=${Object.keys(stats.by_importance || {}).length} lbl="Importance levels" color="var(--yellow)" />
+        </div>
+      `}
+
+      <div class="toolbar">
+        <input type="text" placeholder="Search title, code, description…" value=${filters.q}
+          onInput=${(e) => setFilter('q', e.target.value)} style=${{ minWidth: '260px' }} />
+        <select value=${filters.regulator} onChange=${(e) => setFilter('regulator', e.target.value)}>
+          <option value="">All regulators</option>
+          ${(filterOptions.regulators || []).map((r) => html`<option key=${r} value=${r}>${r}</option>`)}
+        </select>
+        <select value=${filters.item_type} onChange=${(e) => setFilter('item_type', e.target.value)}>
+          <option value="">All item types</option>
+          ${(filterOptions.item_types || []).map((t) => html`<option key=${t} value=${t}>${t.replace(/_/g, ' ')}</option>`)}
+        </select>
+        <select value=${filters.category} onChange=${(e) => setFilter('category', e.target.value)}>
+          <option value="">All categories</option>
+          ${(filterOptions.categories || []).map((c) => html`<option key=${c} value=${c}>${c}</option>`)}
+        </select>
+        <select value=${filters.importance} onChange=${(e) => setFilter('importance', e.target.value)}>
+          <option value="">All importance</option>
+          ${(filterOptions.importances || []).map((x) => html`<option key=${x} value=${x}>${x}</option>`)}
+        </select>
+        <input type="text" placeholder="Pillar 1-6" value=${filters.pillar_id}
+          onInput=${(e) => setFilter('pillar_id', e.target.value)} style=${{ width: '90px' }} />
+        <select value=${filters.sort_by} onChange=${(e) => setFilter('sort_by', e.target.value)}>
+          <option value="item_code">Sort: code</option>
+          <option value="title">Sort: title</option>
+          <option value="importance">Sort: importance</option>
+          <option value="category">Sort: category</option>
+          <option value="rule_reference">Sort: rule ref</option>
+          <option value="analyzed_at">Sort: analyzed</option>
+        </select>
+        <select value=${filters.sort_order} onChange=${(e) => setFilter('sort_order', e.target.value)}>
+          <option value="asc">Asc</option>
+          <option value="desc">Desc</option>
+        </select>
+        <span class="count-label">${data.total} result${data.total !== 1 ? 's' : ''}</span>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Code</th><th>Type</th><th>Title</th><th>Rule ref</th><th>Category</th><th>Importance</th></tr></thead>
+          <tbody>
+            ${loading ? html`<tr><td colspan="6" style=${{ padding: '32px', textAlign: 'center', color: 'var(--text-dim)' }}>Loading...</td></tr>`
+              : data.items.length === 0 ? html`<tr><td colspan="6"><div class="empty-state"><div class="icon">--</div><div>No regulatory items yet. Run the FINRA scrape to populate.</div></div></td></tr>`
+              : data.items.map((item) => html`
+                <tr key=${item.id} onClick=${() => openDetail(item)}>
+                  <td class="code">${item.item_code}</td>
+                  <td>${itemTypeBadge(item.item_type)}</td>
+                  <td>${item.title || '--'}</td>
+                  <td class="dimmed" style=${{ fontSize: '12px' }}>${item.rule_reference || '--'}</td>
+                  <td>${item.category || '--'}</td>
+                  <td>${importanceBadge(item.importance)}</td>
+                </tr>
+              `)}
+          </tbody>
+        </table>
+        ${data.pages > 1 && html`
+          <div class="pagination">
+            <button disabled=${filters.page <= 1} onClick=${() => setPage(filters.page - 1)}>Prev</button>
+            <span class="page-info">Page ${filters.page} of ${data.pages} | ${data.total} total</span>
+            <button disabled=${filters.page >= data.pages} onClick=${() => setPage(filters.page + 1)}>Next</button>
+          </div>
+        `}
+      </div>
+
+      ${selected && html`<${RegulatoryItemModal} item=${selected} onClose=${() => setSelected(null)} />`}
+      ${loadingDetail && html`<div class="modal-overlay"><div style=${{ color: 'var(--text)', padding: '40px' }}>Loading...</div></div>`}
     </div>
   `;
 }
@@ -1540,6 +1832,7 @@ function App() {
         <nav>
           <button class=${tab === 'dashboard' ? 'active' : ''} onClick=${() => setTab('dashboard')}>Dashboard</button>
           <button class=${tab === 'obligations' ? 'active' : ''} onClick=${() => setTab('obligations')}>Obligations</button>
+          <button class=${tab === 'items' ? 'active' : ''} onClick=${() => setTab('items')}>Items</button>
           <button class=${tab === 'sources' ? 'active' : ''} onClick=${() => setTab('sources')}>Sources</button>
           <button class=${tab === 'news' ? 'active' : ''} onClick=${() => setTab('news')} style=${{ position: 'relative' }}>
             News
@@ -1552,6 +1845,7 @@ function App() {
       <main>
         ${tab === 'dashboard' && html`<${DashboardView} stats=${stats} loading=${statsLoading} error=${statsError} />`}
         ${tab === 'obligations' && html`<${ObligationsView} filterOptions=${filterOptions} />`}
+        ${tab === 'items' && html`<${RegulatoryItemsView} />`}
         ${tab === 'sources' && html`<${SourcesView} filterOptions=${filterOptions} />`}
         ${tab === 'news' && html`<${NewsView} />`}
         ${tab === 'scheduler' && html`<${SchedulerView} />`}

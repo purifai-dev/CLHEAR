@@ -1,8 +1,9 @@
 fastapi
 uvicorn[standard]
-anthropic
+anthropic>=0.40.0
 requests
 python-dotenv
 sqlalchemy
 psycopg2-binary
 apscheduler
+beautifulsoup4>=4.12.0

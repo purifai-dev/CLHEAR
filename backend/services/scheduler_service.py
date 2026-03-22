@@ -126,6 +126,16 @@ class SchedulerService:
 
             regulator = job[2]
             job_name = job[1]
+            raw_cfg = job[3] if len(job) > 3 else None
+            if isinstance(raw_cfg, str):
+                try:
+                    job_config = json.loads(raw_cfg) if raw_cfg else {}
+                except json.JSONDecodeError:
+                    job_config = {}
+            elif isinstance(raw_cfg, dict):
+                job_config = raw_cfg
+            else:
+                job_config = raw_cfg or {}
 
             # Mark scan as started
             conn.execute(
@@ -142,8 +152,8 @@ class SchedulerService:
             self.audit.log_scan(job_id, regulator, "started")
 
         try:
-            # Run the actual regulatory data reload
-            result = self._run_regulatory_scan(regulator)
+            # Run the actual regulatory data reload (or FINRA scrape pipeline)
+            result = self._run_regulatory_scan(regulator, job_config)
 
             # Update job status
             with self.engine.connect() as conn:
@@ -209,11 +219,38 @@ class SchedulerService:
             if self.audit:
                 self.audit.log_scan(job_id, regulator, "error", error=error_msg)
 
-    def _run_regulatory_scan(self, regulator: str) -> dict:
+    def _run_regulatory_scan(self, regulator: str, config: Optional[dict] = None) -> dict:
         """
         Execute the actual regulatory data scan/reload for a given regulator.
         This re-imports from the data modules and runs the loader.
+
+        Optional job config:
+          { "pipeline": "finra_scrape", "max_rules": 50, "force_reanalyze": false }
+        starts the async FINRA web scrape + AI analysis pipeline (same as POST /api/scrape/finra).
         """
+        config = config or {}
+        if config.get("pipeline") == "finra_scrape" and regulator.upper() == "FINRA":
+            from services.scrape_orchestrator import ScrapeOrchestrator
+
+            orch = ScrapeOrchestrator(self.engine, self.audit)
+            try:
+                out = orch.start_finra_pipeline(
+                    max_rules=config.get("max_rules"),
+                    force_reanalyze=bool(config.get("force_reanalyze")),
+                )
+                return {
+                    "pipeline": "finra_scrape",
+                    "started": True,
+                    "run_id": out.get("run_id"),
+                    "timestamp": datetime.utcnow().isoformat(),
+                }
+            except RuntimeError as e:
+                return {
+                    "pipeline": "finra_scrape",
+                    "error": str(e),
+                    "timestamp": datetime.utcnow().isoformat(),
+                }
+
         from services.regulatory_loader import RegulatoryLoader
 
         loader = RegulatoryLoader()
