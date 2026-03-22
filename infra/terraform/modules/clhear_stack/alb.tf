@@ -1,6 +1,6 @@
 resource "aws_security_group" "alb" {
   name_prefix = "${var.name_prefix}-alb-"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = local.vpc_id
   description = "CLHear ALB"
   ingress {
     from_port   = 80
@@ -37,7 +37,7 @@ resource "aws_lb" "main" {
   internal                   = false
   load_balancer_type         = "application"
   security_groups            = [aws_security_group.alb.id]
-  subnets                    = aws_subnet.public[*].id
+  subnets                    = local.public_subnet_ids
   idle_timeout               = var.alb_idle_timeout
   drop_invalid_header_fields = true
   tags                       = merge(local.tags, { Name = "${var.name_prefix}-alb" })
@@ -47,7 +47,7 @@ resource "aws_lb_target_group" "api" {
   name        = substr("${replace(var.name_prefix, "_", "-")}-api", 0, 32)
   port        = 8000
   protocol    = "HTTP"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = local.vpc_id
   target_type = "ip"
 
   health_check {
@@ -63,7 +63,6 @@ resource "aws_lb_target_group" "api" {
   tags = merge(local.tags, { Name = "${var.name_prefix}-tg-api" })
 }
 
-# HTTP → forward (no TLS on ALB) or redirect to HTTPS
 resource "aws_lb_listener" "http_forward" {
   count             = local.use_https ? 0 : 1
   load_balancer_arn = aws_lb.main.arn
@@ -98,7 +97,7 @@ resource "aws_lb_listener" "https" {
   port              = 443
   protocol          = "HTTPS"
   ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
-  certificate_arn   = var.acm_certificate_arn
+  certificate_arn   = local.resolved_acm_arn
 
   default_action {
     type             = "forward"

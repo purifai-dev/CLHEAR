@@ -15,8 +15,25 @@ variable "name_prefix" {
 }
 
 variable "vpc_cidr" {
-  type    = string
-  default = "10.42.0.0/16"
+  description = "Only when creating a dedicated VPC (leave vpc_id empty)."
+  type        = string
+  default     = "10.42.0.0/16"
+}
+
+variable "vpc_id" {
+  description = "Shared PurifAI VPC ID (e.g. Complied Influence). Requires public_subnet_ids and private_subnet_ids (≥2 each)."
+  type        = string
+  default     = ""
+}
+
+variable "public_subnet_ids" {
+  type    = list(string)
+  default = []
+}
+
+variable "private_subnet_ids" {
+  type    = list(string)
+  default = []
 }
 
 variable "app_base_url" {
@@ -84,6 +101,18 @@ variable "smtp_from" {
 
 variable "github_repository" {
   description = "owner/repo for GitHub OIDC deploy role (e.g. fathercandle/clhear-platform). Empty skips role."
+  type        = string
+  default     = ""
+}
+
+variable "domain_name" {
+  description = "Domain for Route53 + ACM (e.g. clhear.ai). Empty skips DNS/cert."
+  type        = string
+  default     = ""
+}
+
+variable "bastion_security_group_id" {
+  description = "SG of the SSM bastion for DB port-forwarding."
   type        = string
   default     = ""
 }

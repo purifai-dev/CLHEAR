@@ -1,5 +1,6 @@
 output "vpc_id" {
-  value = aws_vpc.main.id
+  value       = local.vpc_id
+  description = "VPC hosting CLHear (created by module or supplied via var.vpc_id)."
 }
 
 output "alb_dns_name" {
@@ -31,4 +32,14 @@ output "database_secret_arn" {
 output "github_deploy_role_arn" {
   description = "Set as GitHub secret CLHEAR_AWS_DEPLOY_ROLE_ARN for CI deploy."
   value       = length(aws_iam_role.github_deploy) > 0 ? aws_iam_role.github_deploy[0].arn : null
+}
+
+output "route53_nameservers" {
+  description = "Set these as nameservers at your registrar (GoDaddy) to delegate clhear.ai to Route53."
+  value       = length(aws_route53_zone.main) > 0 ? aws_route53_zone.main[0].name_servers : []
+}
+
+output "acm_certificate_arn" {
+  description = "ACM certificate ARN (from dns.tf or passed in). Used by ALB HTTPS listener."
+  value       = local.resolved_acm_arn
 }

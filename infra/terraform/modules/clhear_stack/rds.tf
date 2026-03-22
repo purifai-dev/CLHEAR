@@ -5,13 +5,13 @@ resource "random_password" "db" {
 
 resource "aws_db_subnet_group" "main" {
   name       = "${var.name_prefix}-db-subnets"
-  subnet_ids = aws_subnet.private[*].id
+  subnet_ids = local.private_subnet_ids
   tags       = merge(local.tags, { Name = "${var.name_prefix}-db-subnets" })
 }
 
 resource "aws_security_group" "ecs_tasks" {
   name_prefix = "${var.name_prefix}-ecs-"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = local.vpc_id
   description = "CLHear ECS tasks"
   egress {
     from_port   = 0
@@ -24,8 +24,8 @@ resource "aws_security_group" "ecs_tasks" {
 
 resource "aws_security_group" "rds" {
   name_prefix = "${var.name_prefix}-rds-"
-  vpc_id      = aws_vpc.main.id
-  description = "CLHear PostgreSQL"
+  vpc_id      = local.vpc_id
+  description = "CLHear Aurora PostgreSQL"
   ingress {
     from_port       = 5432
     to_port         = 5432
@@ -41,36 +41,54 @@ resource "aws_security_group" "rds" {
   tags = merge(local.tags, { Name = "${var.name_prefix}-rds" })
 }
 
-resource "aws_db_parameter_group" "main" {
-  family = "postgres16"
-  name   = "${var.name_prefix}-pg16"
-  tags   = merge(local.tags, { Name = "${var.name_prefix}-pg16" })
+resource "aws_rds_cluster_parameter_group" "main" {
+  family = "aurora-postgresql16"
+  name   = "${var.name_prefix}-aurora-pg16"
+  tags   = merge(local.tags, { Name = "${var.name_prefix}-aurora-pg16" })
 }
 
-resource "aws_db_instance" "main" {
-  identifier     = "${var.name_prefix}-postgres"
-  engine         = "postgres"
-  engine_version = "16"
-  instance_class = var.rds_instance_class
+resource "aws_rds_cluster" "main" {
+  cluster_identifier = "${var.name_prefix}-aurora"
+  engine             = "aurora-postgresql"
+  engine_version     = "16.6"
 
-  db_name  = var.db_name
-  username = var.db_username
-  password = random_password.db.result
+  database_name   = var.db_name
+  master_username = var.db_username
+  master_password = random_password.db.result
 
-  allocated_storage     = 20
-  max_allocated_storage = 100
-  storage_encrypted     = true
+  db_subnet_group_name            = aws_db_subnet_group.main.name
+  vpc_security_group_ids          = [aws_security_group.rds.id]
+  db_cluster_parameter_group_name = aws_rds_cluster_parameter_group.main.name
 
-  db_subnet_group_name   = aws_db_subnet_group.main.name
-  vpc_security_group_ids = [aws_security_group.rds.id]
-  parameter_group_name   = aws_db_parameter_group.main.name
-  publicly_accessible    = false
-  multi_az               = false
-
-  backup_retention_period = 7
-  backup_window           = "03:00-04:00"
-  maintenance_window      = "sun:04:00-sun:05:00"
-
+  storage_encrypted   = true
+  deletion_protection = false
   skip_final_snapshot = true
-  tags                = merge(local.tags, { Name = "${var.name_prefix}-rds" })
+
+  backup_retention_period      = 7
+  preferred_backup_window      = "03:00-04:00"
+  preferred_maintenance_window = "sun:04:00-sun:05:00"
+
+  tags = merge(local.tags, { Name = "${var.name_prefix}-aurora" })
+}
+
+resource "aws_rds_cluster_instance" "main" {
+  identifier         = "${var.name_prefix}-aurora-1"
+  cluster_identifier = aws_rds_cluster.main.id
+  instance_class     = var.aurora_instance_class
+  engine             = aws_rds_cluster.main.engine
+  engine_version     = aws_rds_cluster.main.engine_version
+
+  publicly_accessible = false
+
+  tags = merge(local.tags, { Name = "${var.name_prefix}-aurora-1" })
+}
+
+resource "aws_security_group_rule" "rds_from_bastion" {
+  count                    = trimspace(var.bastion_security_group_id) != "" ? 1 : 0
+  type                     = "ingress"
+  from_port                = 5432
+  to_port                  = 5432
+  protocol                 = "tcp"
+  source_security_group_id = var.bastion_security_group_id
+  security_group_id        = aws_security_group.rds.id
 }

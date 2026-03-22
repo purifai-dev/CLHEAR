@@ -1,0 +1,11 @@
+---
+description: Universal brain integration for clhear-platform
+alwaysApply: true
+---
+
+# Project Memory Protocol
+
+- This project is "clhear-platform".
+- Always include `project="clhear-platform"` when saving lessons, patterns, or decisions.
+- At the start of a complex task, run `get_project_context` with `project="clhear-platform"`.
+- Tech stack: Python/FastAPI backend, ECS Fargate, RDS PostgreSQL.

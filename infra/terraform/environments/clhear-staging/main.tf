@@ -1,6 +1,7 @@
 # -----------------------------------------------------------------------------
-# CLHear staging — full stack (VPC, RDS, ECR, ECS, ALB).
-# Isolated from Complied Influence: separate VPC CIDR, state key, IAM roles.
+# CLHear staging — Aurora, ECR, ECS, ALB (own SGs, DB, secrets).
+# Shared PurifAI VPC: set vpc_id + subnet IDs (no second VPC/NAT).
+# State: dedicated S3 key under the same bucket/lock table as other stacks.
 # -----------------------------------------------------------------------------
 
 data "aws_caller_identity" "current" {}
@@ -8,11 +9,14 @@ data "aws_caller_identity" "current" {}
 module "clhear" {
   source = "../../modules/clhear_stack"
 
-  name_prefix     = var.name_prefix
-  aws_region      = var.aws_region
-  vpc_cidr        = var.vpc_cidr
-  app_base_url    = var.app_base_url
-  allowed_origins = var.allowed_origins
+  name_prefix        = var.name_prefix
+  aws_region         = var.aws_region
+  vpc_id             = var.vpc_id
+  public_subnet_ids  = var.public_subnet_ids
+  private_subnet_ids = var.private_subnet_ids
+  vpc_cidr           = var.vpc_cidr
+  app_base_url       = var.app_base_url
+  allowed_origins    = var.allowed_origins
 
   rds_instance_class = var.rds_instance_class
   app_cpu            = var.app_cpu
@@ -20,6 +24,10 @@ module "clhear" {
 
   acm_certificate_arn = var.acm_certificate_arn
   alb_idle_timeout    = var.alb_idle_timeout
+
+  domain_name = var.domain_name
+
+  bastion_security_group_id = var.bastion_security_group_id
 
   smtp_host = var.smtp_host
   smtp_port = var.smtp_port
@@ -36,6 +44,11 @@ module "clhear" {
 
 output "aws_account_id" {
   value = data.aws_caller_identity.current.account_id
+}
+
+output "vpc_id" {
+  value       = module.clhear.vpc_id
+  description = "VPC used by CLHear (shared or created)."
 }
 
 output "alb_dns_name" {
@@ -56,4 +69,13 @@ output "ecs_service_name" {
 
 output "github_deploy_role_arn" {
   value = module.clhear.github_deploy_role_arn
+}
+
+output "route53_nameservers" {
+  description = "Update GoDaddy nameservers for clhear.ai to these values."
+  value       = module.clhear.route53_nameservers
+}
+
+output "acm_certificate_arn" {
+  value = module.clhear.acm_certificate_arn
 }

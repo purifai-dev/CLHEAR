@@ -8,8 +8,29 @@ variable "aws_region" {
   default = "us-east-1"
 }
 
+variable "vpc_id" {
+  description = <<-EOT
+    Existing PurifAI / platform VPC ID (e.g. Complied Influence). When set, CLHear does not create a VPC, NAT, IGW, or subnets.
+    Set public_subnet_ids and private_subnet_ids (ALB requires ≥2 public subnets in different AZs).
+  EOT
+  type        = string
+  default     = ""
+}
+
+variable "public_subnet_ids" {
+  description = "Public subnet IDs for the ALB (required when vpc_id is set)."
+  type        = list(string)
+  default     = []
+}
+
+variable "private_subnet_ids" {
+  description = "Private subnet IDs for ECS and RDS subnet group (required when vpc_id is set)."
+  type        = list(string)
+  default     = []
+}
+
 variable "vpc_cidr" {
-  description = "Dedicated VPC CIDR for CLHear (avoid 10.0.0.0/16 if Complied Influence uses it in the same account)."
+  description = "CIDR for a new VPC only (ignored when vpc_id is set)."
   type        = string
   default     = "10.42.0.0/16"
 }
@@ -99,4 +120,22 @@ variable "tags" {
   type        = map(string)
   default     = {}
   description = "Extra tags for all resources."
+}
+
+variable "aurora_instance_class" {
+  description = "Aurora PostgreSQL instance class. db.t4g.medium is the minimum for Aurora burstable."
+  type        = string
+  default     = "db.t4g.medium"
+}
+
+variable "domain_name" {
+  description = "Domain for Route53 zone + ACM cert (e.g. clhear.ai). Empty skips DNS/cert creation."
+  type        = string
+  default     = ""
+}
+
+variable "bastion_security_group_id" {
+  description = "SG of the SSM bastion for DB access (port-forwarding). Empty skips the rule."
+  type        = string
+  default     = ""
 }

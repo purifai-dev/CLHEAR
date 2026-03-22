@@ -1,0 +1,25 @@
+# Copy to terraform.tfvars (gitignored) and adjust github_repository.
+# PurifAI shared VPC (Complied Influence staging) — validated snapshot.
+
+aws_region   = "us-east-1"
+environment  = "staging"
+name_prefix  = "clhear-staging"
+
+# Shared VPC mode — do not set vpc_cidr for a new VPC here.
+vpc_id = "vpc-0bf39263da897d97a"
+public_subnet_ids = [
+  "subnet-023d0f433b7d5f70a",
+  "subnet-05d5a564d6b66295d",
+]
+private_subnet_ids = [
+  "subnet-08702f0d4167369ec",
+  "subnet-0a1a563c8596be34d",
+]
+
+app_base_url = "https://clhear.ai"
+
+# GitHub Actions OIDC — set to your real clhear-platform repo (narrow trust).
+# github_repository = "your-org/clhear-platform"
+
+# Optional HTTPS on ALB
+# acm_certificate_arn = "arn:aws:acm:us-east-1:392932797125:certificate/..."

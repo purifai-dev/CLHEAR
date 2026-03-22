@@ -10,12 +10,12 @@ resource "aws_secretsmanager_secret_version" "database_url" {
     "postgresql://%s:%s@%s:%s/%s",
     var.db_username,
     urlencode(random_password.db.result),
-    aws_db_instance.main.address,
-    aws_db_instance.main.port,
+    aws_rds_cluster.main.endpoint,
+    aws_rds_cluster.main.port,
     var.db_name
   )
 
-  depends_on = [aws_db_instance.main]
+  depends_on = [aws_rds_cluster.main]
 }
 
 resource "aws_secretsmanager_secret" "smtp_pass" {
