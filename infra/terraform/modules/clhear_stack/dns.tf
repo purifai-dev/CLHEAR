@@ -9,11 +9,11 @@ resource "aws_route53_zone" "main" {
 }
 
 resource "aws_acm_certificate" "main" {
-  count             = local.create_dns ? 1 : 0
-  domain_name       = var.domain_name
+  count                     = local.create_dns ? 1 : 0
+  domain_name               = var.domain_name
   subject_alternative_names = ["www.${var.domain_name}"]
-  validation_method = "DNS"
-  tags              = merge(local.tags, { Name = "${var.name_prefix}-cert" })
+  validation_method         = "DNS"
+  tags                      = merge(local.tags, { Name = "${var.name_prefix}-cert" })
 
   lifecycle {
     create_before_destroy = true
