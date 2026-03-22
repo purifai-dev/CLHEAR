@@ -38,11 +38,17 @@ def _sanitize_rule_for_code(rule_number: str) -> str:
 
 
 def _parse_json_block(text: str) -> Any:
-    text = (text or "").strip()
-    m = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
-    if m:
-        text = m.group(1).strip()
-    return json.loads(text)
+    raw = (text or "").strip()
+    m = re.search(r"```(?:json)?\s*([\s\S]*?)```", raw)
+    body = m.group(1).strip() if m else raw
+    try:
+        return json.loads(body)
+    except json.JSONDecodeError:
+        start = body.find("[")
+        end = body.rfind("]")
+        if start != -1 and end != -1 and end > start:
+            return json.loads(body[start : end + 1])
+        raise
 
 
 def build_prompt(rule_number: str, rule_title: str, raw_text: str) -> str:
