@@ -1,0 +1,37 @@
+# Validates CLHear Terraform only. Does not deploy. Does not touch Complied Influence.
+name: Terraform validate (CLHear)
+
+on:
+  pull_request:
+    paths:
+      - "infra/terraform/**"
+  push:
+    branches: [main]
+    paths:
+      - "infra/terraform/**"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/terraform/environments/clhear-staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.0"
+
+      - name: terraform fmt -check
+        run: terraform fmt -check -recursive
+        working-directory: infra/terraform
+
+      - name: terraform init (no backend)
+        run: terraform init -backend=false
+
+      - name: terraform validate
+        run: terraform validate

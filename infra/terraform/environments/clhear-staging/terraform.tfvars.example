@@ -1,0 +1,19 @@
+# Copy to terraform.tfvars (gitignored) or use -var flags.
+# Never commit real secrets.
+
+aws_region   = "us-east-1"
+environment  = "staging"
+name_prefix  = "clhear-staging"
+vpc_cidr     = "10.42.0.0/16"
+app_base_url = "https://clhear.ai"
+
+# Optional: ACM cert ARN in us-east-1 for HTTPS on the ALB (then HTTP redirects to HTTPS).
+# acm_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
+# GitHub repo for OIDC deploy role (same account must already have GitHub OIDC provider).
+# github_repository = "your-org/clhear-platform"
+
+# Optional SMTP (if smtp_pass set, it is stored in Secrets Manager and injected into the task).
+# smtp_host = "email-smtp.us-east-1.amazonaws.com"
+# smtp_user = "AKIAXXXXXXXX"
+# smtp_pass = "your-smtp-secret"

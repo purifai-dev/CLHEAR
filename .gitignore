@@ -1,0 +1,30 @@
+# Terraform
+**/terraform.tfvars
+**/*.auto.tfvars
+**/.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+# Keep .terraform.lock.hcl committed for reproducible provider versions.
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+!.env.prod.example
+backend/.env
+
+# Python
+__pycache__/
+*.py[cod]
+backend/venv/
+.venv/
+
+# OS
+.DS_Store
+.claude/worktrees/
