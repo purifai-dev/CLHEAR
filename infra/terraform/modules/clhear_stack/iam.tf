@@ -19,6 +19,7 @@ resource "aws_iam_role_policy_attachment" "ecs_execution" {
 locals {
   execution_secret_arns = compact(concat(
     [aws_secretsmanager_secret.database_url.arn],
+    [aws_secretsmanager_secret.admin_http_pass.arn],
     [for s in aws_secretsmanager_secret.smtp_pass : s.arn],
     data.aws_secretsmanager_secret.anthropic[*].arn
   ))

@@ -23,6 +23,9 @@ locals {
 
   container_secrets = concat(
     [{ name = "DATABASE_URL", valueFrom = aws_secretsmanager_secret.database_url.arn }],
+    [
+      { name = "CLHEAR_ADMIN_PASS", valueFrom = aws_secretsmanager_secret.admin_http_pass.arn },
+    ],
     length(aws_secretsmanager_secret.smtp_pass) > 0 ? [
       { name = "SMTP_PASS", valueFrom = aws_secretsmanager_secret.smtp_pass[0].arn }
     ] : [],
@@ -40,8 +43,10 @@ locals {
       { name = "SMTP_USER", value = var.smtp_user },
       { name = "SMTP_FROM", value = var.smtp_from },
       { name = "CLHEAR_RUN_MIGRATIONS", value = var.clhear_run_migrations },
-      { name = "CLHEAR_ADMIN_USER", value = var.clhear_admin_user },
-      { name = "CLHEAR_ADMIN_PASS", value = var.clhear_admin_pass },
+      {
+        name  = "CLHEAR_ADMIN_USER"
+        value = trimspace(var.clhear_admin_user) != "" ? var.clhear_admin_user : "clhear_admin"
+      },
     ],
     length(aws_secretsmanager_secret.smtp_pass) > 0 ? [] : [{ name = "SMTP_PASS", value = "" }]
   )

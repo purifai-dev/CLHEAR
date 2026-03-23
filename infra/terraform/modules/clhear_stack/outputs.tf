@@ -29,6 +29,11 @@ output "database_secret_arn" {
   sensitive = true
 }
 
+output "admin_http_pass_secret_arn" {
+  description = "Secrets Manager plaintext password for /admin HTTP Basic (username is CLHEAR_ADMIN_USER in ECS env, default clhear_admin)."
+  value       = aws_secretsmanager_secret.admin_http_pass.arn
+}
+
 output "github_deploy_role_arn" {
   description = "Set as GitHub secret CLHEAR_AWS_DEPLOY_ROLE_ARN for CI deploy."
   value       = length(aws_iam_role.github_deploy) > 0 ? aws_iam_role.github_deploy[0].arn : null
