@@ -164,3 +164,16 @@ variable "clhear_admin_pass" {
   default     = ""
   sensitive   = true
 }
+
+variable "finra_api_client_id" {
+  description = "FINRA Query API client ID (from FINRA API Console). Empty falls back to HTML scraping."
+  type        = string
+  default     = ""
+}
+
+variable "finra_api_client_secret" {
+  description = "FINRA Query API client secret (OAuth2). Stored in Secrets Manager."
+  type        = string
+  default     = ""
+  sensitive   = true
+}

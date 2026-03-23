@@ -163,6 +163,93 @@ class ScrapeOrchestrator:
             )
             conn.commit()
 
+    def _fetch_rules(
+        self,
+        run_id: str,
+        max_rules: Optional[int],
+        rule_numbers: Optional[Sequence[str]],
+    ) -> list[ScrapedRule]:
+        """Fetch rules via FINRA Query API if credentials are set, otherwise HTML scraping."""
+        from services.finra_api_client import is_configured as finra_api_configured
+
+        if finra_api_configured():
+            return self._fetch_via_api(run_id, max_rules, rule_numbers)
+        return self._fetch_via_html(run_id, max_rules, rule_numbers)
+
+    def _fetch_via_api(
+        self,
+        run_id: str,
+        max_rules: Optional[int],
+        rule_numbers: Optional[Sequence[str]],
+    ) -> list[ScrapedRule]:
+        """Use the official FINRA Query API (structured JSON, no scraping)."""
+        from services.finra_api_client import fetch_all_rules, fetch_rules_by_numbers, FINRARuleRecord
+
+        self._update_run(run_id, progress={"phase": "api_fetch", "message": "Fetching rules from FINRA Query API"})
+
+        if rule_numbers:
+            recs = fetch_rules_by_numbers([str(r) for r in rule_numbers])
+        else:
+            recs = fetch_all_rules(limit=max_rules or 5000)
+            if max_rules is not None:
+                recs = recs[:max_rules]
+
+        def _to_scraped(rec: FINRARuleRecord) -> ScrapedRule:
+            series = rec.hierarchy.split(">")[0].strip() if rec.hierarchy else ""
+            return ScrapedRule(
+                regulator="FINRA",
+                series=series[:50] if series else "",
+                series_title=series or f"FINRA Rule {rec.rule_number}",
+                rule_number=rec.rule_number,
+                rule_title=rec.rule_title,
+                raw_text=rec.raw_text,
+                source_url=f"https://www.finra.org/rules-guidance/rulebooks/finra-rules/{rec.rule_number}",
+                content_hash=rec.content_hash,
+            )
+
+        return [_to_scraped(r) for r in recs]
+
+    def _fetch_via_html(
+        self,
+        run_id: str,
+        max_rules: Optional[int],
+        rule_numbers: Optional[Sequence[str]],
+    ) -> list[ScrapedRule]:
+        """Discover + scrape HTML (fallback when FINRA API creds are missing)."""
+        session = _session()
+
+        def prog(msg: str, n: int) -> None:
+            self._update_run(
+                run_id,
+                progress={"phase": "discover", "message": msg, "discovered": n},
+            )
+
+        pairs = discover_rule_urls(session, on_progress=prog)
+        if rule_numbers:
+            wanted = {str(x).strip() for x in rule_numbers if str(x).strip()}
+            pairs = [(rn, url) for rn, url in pairs if rn in wanted]
+        if max_rules is not None:
+            pairs = pairs[:max(0, int(max_rules))]
+
+        results: list[ScrapedRule] = []
+        total = len(pairs)
+        self._update_run(run_id, progress={"phase": "html_scrape", "message": f"HTML scraping {total} rules (no FINRA API key)"})
+        for i, (rn, url) in enumerate(pairs, start=1):
+            self._update_run(
+                run_id,
+                progress={
+                    "phase": "html_scrape",
+                    "current_rule": rn,
+                    "index": i,
+                    "total": total,
+                    "message": f"Scraping FINRA Rule {rn}",
+                },
+            )
+            scraped = scrape_rule(session, rn, url)
+            if scraped:
+                results.append(scraped)
+        return results
+
     def _run_finra_pipeline(
         self,
         run_id: str,
@@ -170,7 +257,6 @@ class ScrapeOrchestrator:
         force_reanalyze: bool,
         rule_numbers: Optional[Sequence[str]] = None,
     ) -> None:
-        session = _session()
         items_total = 0
         src_new = 0
         src_upd = 0
@@ -187,38 +273,22 @@ class ScrapeOrchestrator:
                     metadata={"max_rules": max_rules, "force_reanalyze": force_reanalyze},
                 )
 
-            def prog(msg: str, n: int) -> None:
-                self._update_run(
-                    run_id,
-                    progress={"phase": "discover", "message": msg, "discovered": n},
-                )
+            scraped_rules = self._fetch_rules(run_id, max_rules, rule_numbers)
+            total = len(scraped_rules)
+            self._update_run(run_id, rules_total=total, rules_done=0, progress={"phase": "process", "message": f"{total} rules to process"})
 
-            pairs = discover_rule_urls(session, on_progress=prog)
-            if rule_numbers:
-                wanted = {str(x).strip() for x in rule_numbers if str(x).strip()}
-                pairs = [(rn, url) for rn, url in pairs if rn in wanted]
-            if max_rules is not None:
-                pairs = pairs[: max(0, int(max_rules))]
-
-            total = len(pairs)
-            self._update_run(run_id, rules_total=total, rules_done=0, progress={"phase": "scrape", "message": f"{total} rules to process"})
-
-            for i, (rn, url) in enumerate(pairs, start=1):
+            for i, scraped in enumerate(scraped_rules, start=1):
                 self._update_run(
                     run_id,
                     rules_done=i - 1,
                     progress={
-                        "phase": "scrape_analyze",
-                        "current_rule": rn,
+                        "phase": "upsert_analyze",
+                        "current_rule": scraped.rule_number,
                         "index": i,
                         "total": total,
-                        "message": f"Processing FINRA Rule {rn}",
+                        "message": f"Processing FINRA Rule {scraped.rule_number}",
                     },
                 )
-
-                scraped = scrape_rule(session, rn, url)
-                if not scraped:
-                    continue
 
                 sn, su = self._upsert_source(scraped)
                 if sn == "new":

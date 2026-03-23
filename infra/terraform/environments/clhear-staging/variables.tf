@@ -139,3 +139,14 @@ variable "clhear_admin_pass" {
   default   = ""
   sensitive = true
 }
+
+variable "finra_api_client_id" {
+  type    = string
+  default = ""
+}
+
+variable "finra_api_client_secret" {
+  type      = string
+  default   = ""
+  sensitive = true
+}

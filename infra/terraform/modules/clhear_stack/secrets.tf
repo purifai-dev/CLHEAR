@@ -47,3 +47,17 @@ resource "aws_secretsmanager_secret_version" "admin_http_pass" {
   secret_id     = aws_secretsmanager_secret.admin_http_pass.id
   secret_string = trimspace(var.clhear_admin_pass) != "" ? var.clhear_admin_pass : random_password.admin.result
 }
+
+# FINRA API secret (client secret for OAuth2; client ID goes via env as it is not sensitive).
+resource "aws_secretsmanager_secret" "finra_api_secret" {
+  count                   = trimspace(var.finra_api_client_secret) != "" ? 1 : 0
+  name                    = "${var.name_prefix}-finra-api-secret"
+  recovery_window_in_days = 0
+  tags                    = merge(local.tags, { Name = "${var.name_prefix}-finra-api-secret" })
+}
+
+resource "aws_secretsmanager_secret_version" "finra_api_secret" {
+  count         = length(aws_secretsmanager_secret.finra_api_secret)
+  secret_id     = aws_secretsmanager_secret.finra_api_secret[0].id
+  secret_string = var.finra_api_client_secret
+}
