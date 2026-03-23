@@ -176,9 +176,28 @@ class ScrapeOrchestrator:
             try:
                 return self._fetch_via_api(run_id, max_rules, rule_numbers)
             except Exception as exc:
-                logger.warning("FINRA API failed (%s), falling back to HTML scraping", exc)
-                self._update_run(run_id, progress={"phase": "api_fallback", "message": f"API error: {exc}; falling back to HTML"})
-        return self._fetch_via_html(run_id, max_rules, rule_numbers)
+                logger.warning("FINRA API failed, falling back to HTML scraping", exc_info=True)
+                detail = str(exc)[:1200]
+                self._update_run(
+                    run_id,
+                    progress={
+                        "phase": "api_fallback",
+                        "message": "FINRA Query API failed; using finra.org HTML instead. See server logs for full response body.",
+                        "api_error": detail,
+                    },
+                )
+                return self._fetch_via_html(
+                    run_id,
+                    max_rules,
+                    rule_numbers,
+                    html_reason="FINRA Query API failed (403/401/etc.) — see progress.api_error",
+                )
+        return self._fetch_via_html(
+            run_id,
+            max_rules,
+            rule_numbers,
+            html_reason="FINRA_API_CLIENT_ID / FINRA_API_CLIENT_SECRET not set",
+        )
 
     def _fetch_via_api(
         self,
@@ -218,8 +237,10 @@ class ScrapeOrchestrator:
         run_id: str,
         max_rules: Optional[int],
         rule_numbers: Optional[Sequence[str]],
+        *,
+        html_reason: str = "FINRA Query API not configured",
     ) -> list[ScrapedRule]:
-        """Discover + scrape HTML (fallback when FINRA API creds are missing)."""
+        """Discover + scrape HTML when API is unavailable or credentials missing."""
         session = _session()
 
         def prog(msg: str, n: int) -> None:
@@ -237,7 +258,14 @@ class ScrapeOrchestrator:
 
         results: list[ScrapedRule] = []
         total = len(pairs)
-        self._update_run(run_id, progress={"phase": "html_scrape", "message": f"HTML scraping {total} rules (no FINRA API key)"})
+        self._update_run(
+            run_id,
+            progress={
+                "phase": "html_scrape",
+                "message": f"HTML scraping {total} rules — {html_reason}",
+                "source": "finra.org",
+            },
+        )
         for i, (rn, url) in enumerate(pairs, start=1):
             self._update_run(
                 run_id,
