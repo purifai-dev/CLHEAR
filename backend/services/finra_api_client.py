@@ -25,7 +25,8 @@ logger = logging.getLogger(__name__)
 
 FIP_TOKEN_URL = "https://ews.fip.finra.org/fip/rest/ews/oauth2/access_token?grant_type=client_credentials"
 API_BASE = "https://api.finra.org"
-RULEBOOK_ENDPOINT = f"{API_BASE}/data/group/finra/name/finraRulebook"
+RULEBOOK_DATASET = os.getenv("FINRA_API_DATASET", "finraRulebook")
+RULEBOOK_ENDPOINT = f"{API_BASE}/data/group/finra/name/{RULEBOOK_DATASET}"
 USER_AGENT = "CLHEAR.ai-Compliance-Monitor/1.0 (+https://clhear.ai)"
 
 _cached_token: Optional[str] = None
@@ -95,6 +96,35 @@ def _api_session() -> requests.Session:
     return s
 
 
+def _resolve_endpoint(session: requests.Session, token: str) -> str:
+    """Try production dataset first; fall back to mock on 403."""
+    global RULEBOOK_ENDPOINT, RULEBOOK_DATASET
+
+    probe = session.post(
+        RULEBOOK_ENDPOINT,
+        json={"limit": 1},
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=30,
+    )
+    if probe.status_code == 403 and "Mock" not in RULEBOOK_DATASET:
+        mock = f"{API_BASE}/data/group/finra/name/finraRulebookMock"
+        logger.warning("FINRA API: 403 on %s, trying mock dataset", RULEBOOK_ENDPOINT)
+        probe2 = session.post(
+            mock,
+            json={"limit": 1},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=30,
+        )
+        if probe2.ok:
+            RULEBOOK_ENDPOINT = mock
+            RULEBOOK_DATASET = "finraRulebookMock"
+            logger.info("FINRA API: using mock dataset (upgrade to Firm credential for production)")
+            return RULEBOOK_ENDPOINT
+    if not probe.ok:
+        probe.raise_for_status()
+    return RULEBOOK_ENDPOINT
+
+
 def fetch_all_rules(
     limit: int = 5000,
     offset: int = 0,
@@ -102,6 +132,7 @@ def fetch_all_rules(
     """Fetch all current rules from the FINRA Rulebook Query API."""
     session = _api_session()
     token = _obtain_token(session)
+    endpoint = _resolve_endpoint(session, token)
 
     all_rules: list[FINRARuleRecord] = []
     page_limit = min(limit, 500)
@@ -127,7 +158,7 @@ def fetch_all_rules(
         }
 
         resp = session.post(
-            RULEBOOK_ENDPOINT,
+            endpoint,
             json=payload,
             headers={"Authorization": f"Bearer {token}"},
             timeout=60,
@@ -136,7 +167,7 @@ def fetch_all_rules(
         if resp.status_code == 401:
             token = _obtain_token(session)
             resp = session.post(
-                RULEBOOK_ENDPOINT,
+                endpoint,
                 json=payload,
                 headers={"Authorization": f"Bearer {token}"},
                 timeout=60,
@@ -181,6 +212,7 @@ def fetch_rules_by_numbers(rule_numbers: list[str]) -> list[FINRARuleRecord]:
     """Fetch specific rules by rule number."""
     session = _api_session()
     token = _obtain_token(session)
+    endpoint = _resolve_endpoint(session, token)
 
     results: list[FINRARuleRecord] = []
     for rn in rule_numbers:
@@ -202,7 +234,7 @@ def fetch_rules_by_numbers(rule_numbers: list[str]) -> list[FINRARuleRecord]:
             ],
         }
         resp = session.post(
-            RULEBOOK_ENDPOINT,
+            endpoint,
             json=payload,
             headers={"Authorization": f"Bearer {token}"},
             timeout=60,
@@ -210,7 +242,7 @@ def fetch_rules_by_numbers(rule_numbers: list[str]) -> list[FINRARuleRecord]:
         if resp.status_code == 401:
             token = _obtain_token(session)
             resp = session.post(
-                RULEBOOK_ENDPOINT,
+                endpoint,
                 json=payload,
                 headers={"Authorization": f"Bearer {token}"},
                 timeout=60,

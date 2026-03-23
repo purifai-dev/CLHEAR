@@ -173,7 +173,11 @@ class ScrapeOrchestrator:
         from services.finra_api_client import is_configured as finra_api_configured
 
         if finra_api_configured():
-            return self._fetch_via_api(run_id, max_rules, rule_numbers)
+            try:
+                return self._fetch_via_api(run_id, max_rules, rule_numbers)
+            except Exception as exc:
+                logger.warning("FINRA API failed (%s), falling back to HTML scraping", exc)
+                self._update_run(run_id, progress={"phase": "api_fallback", "message": f"API error: {exc}; falling back to HTML"})
         return self._fetch_via_html(run_id, max_rules, rule_numbers)
 
     def _fetch_via_api(
