@@ -29,8 +29,8 @@ locals {
     length(aws_secretsmanager_secret.smtp_pass) > 0 ? [
       { name = "SMTP_PASS", valueFrom = aws_secretsmanager_secret.smtp_pass[0].arn }
     ] : [],
-    length(aws_secretsmanager_secret.finra_api_secret) > 0 ? [
-      { name = "FINRA_API_CLIENT_SECRET", valueFrom = aws_secretsmanager_secret.finra_api_secret[0].arn }
+    length(data.aws_secretsmanager_secret.finra_api) > 0 ? [
+      { name = "FINRA_API_CLIENT_SECRET", valueFrom = data.aws_secretsmanager_secret.finra_api[0].arn }
     ] : [],
     length(data.aws_secretsmanager_secret.anthropic) > 0 ? [
       { name = "ANTHROPIC_API_KEY", valueFrom = data.aws_secretsmanager_secret.anthropic[0].arn }

@@ -171,9 +171,8 @@ variable "finra_api_client_id" {
   default     = ""
 }
 
-variable "finra_api_client_secret" {
-  description = "FINRA Query API client secret (OAuth2). Stored in Secrets Manager."
+variable "finra_api_secret_name" {
+  description = "Secrets Manager secret name for FINRA API client secret (pre-created in console). Empty skips."
   type        = string
   default     = ""
-  sensitive   = true
 }

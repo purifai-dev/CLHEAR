@@ -43,8 +43,8 @@ module "clhear" {
   clhear_admin_user     = var.clhear_admin_user
   clhear_admin_pass     = var.clhear_admin_pass
 
-  finra_api_client_id     = var.finra_api_client_id
-  finra_api_client_secret = var.finra_api_client_secret
+  finra_api_client_id   = var.finra_api_client_id
+  finra_api_secret_name = var.finra_api_secret_name
 
   tags = {
     Environment = var.environment
