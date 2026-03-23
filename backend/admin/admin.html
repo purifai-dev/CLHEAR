@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CLHEAR Admin</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #232635;
+      --border: #2e3148;
+      --accent: #4f7dff;
+      --accent-dim: #2a3d7a;
+      --text: #e2e4ef;
+      --text-dim: #8b8fa8;
+      --green: #3ecf8e;
+      --red: #e05c5c;
+      --radius: 8px;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --mono: "JetBrains Mono", ui-monospace, monospace;
+    }
+    body { background: var(--bg); color: var(--text); font-family: var(--font); font-size: 13px; min-height: 100vh; }
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    h1 { font-size: 16px; font-weight: 700; color: var(--accent); letter-spacing: 0.04em; }
+    nav { display: flex; gap: 4px; flex-wrap: wrap; }
+    nav button {
+      background: none; border: none; color: var(--text-dim); cursor: pointer;
+      padding: 6px 12px; border-radius: var(--radius); font-size: 12px;
+    }
+    nav button:hover { background: var(--surface2); color: var(--text); }
+    nav button.active { background: var(--accent-dim); color: var(--accent); font-weight: 600; }
+    main { padding: 20px; max-width: 1400px; margin: 0 auto; }
+    .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; }
+    .error-banner { background: rgba(224, 92, 92, 0.15); border: 1px solid var(--red); color: #ffb4b4; padding: 10px 12px; border-radius: var(--radius); margin-bottom: 12px; }
+    .ok { color: var(--green); }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    th { color: var(--text-dim); font-weight: 600; }
+    tr:hover td { background: var(--surface2); }
+    code, .mono { font-family: var(--mono); font-size: 11px; word-break: break-all; }
+    button.btn {
+      background: var(--accent-dim); color: var(--accent); border: 1px solid var(--border);
+      padding: 6px 12px; border-radius: var(--radius); cursor: pointer; font-size: 12px;
+    }
+    button.btn:hover { filter: brightness(1.1); }
+    button.btn-danger { background: rgba(224, 92, 92, 0.2); color: #ffb4b4; }
+    input, textarea, select {
+      background: var(--bg); border: 1px solid var(--border); color: var(--text);
+      padding: 6px 10px; border-radius: 6px; font-size: 12px; width: 100%; max-width: 420px;
+    }
+    label { display: block; color: var(--text-dim); margin-bottom: 4px; font-size: 11px; }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 10px; }
+    .row > div { flex: 1; min-width: 160px; }
+    .muted { color: var(--text-dim); font-size: 11px; }
+    pre.json { background: var(--bg); padding: 10px; border-radius: 6px; overflow: auto; max-height: 280px; border: 1px solid var(--border); }
+  </style>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/htm@3/dist/htm.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+  <script>
+    const html = htm.bind(React.createElement);
+    const { useState, useEffect, useCallback } = React;
+
+    const api = (path, opts = {}) =>
+      fetch("/admin/api" + path, {
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
+        ...opts,
+      }).then(async (r) => {
+        const t = await r.text();
+        let data;
+        try { data = t ? JSON.parse(t) : {}; } catch { data = { raw: t }; }
+        if (!r.ok) throw new Error(data.detail || data.message || r.statusText || String(r.status));
+        return data;
+      });
+
+    function Jobs() {
+      const [jobs, setJobs] = useState([]);
+      const [err, setErr] = useState(null);
+      const [form, setForm] = useState({ name: "", regulator: "FINRA", schedule_cron: "0 6 * * *", enabled: true, config: '{"pipeline":"finra_scrape"}' });
+      const load = useCallback(() => {
+        setErr(null);
+        api("/jobs").then((d) => setJobs(d.jobs || [])).catch((e) => setErr(String(e.message)));
+      }, []);
+      useEffect(() => { load(); }, [load]);
+      return html`
+        <div>
+          ${err && html`<div class="error-banner">${err}</div>`}
+          <div class="panel">
+            <h2 style=${{ marginBottom: "12px", fontSize: "14px" }}>Create job</h2>
+            <div class="row">
+              <div><label>Name</label><input value=${form.name} onChange=${(e) => setForm({ ...form, name: e.target.value })} /></div>
+              <div><label>Regulator</label><input value=${form.regulator} onChange=${(e) => setForm({ ...form, regulator: e.target.value })} /></div>
+              <div><label>Cron</label><input value=${form.schedule_cron} onChange=${(e) => setForm({ ...form, schedule_cron: e.target.value })} /></div>
+            </div>
+            <div class="row">
+              <div><label>Config (JSON)</label><textarea rows="3" value=${form.config} onChange=${(e) => setForm({ ...form, config: e.target.value })} /></div>
+            </div>
+            <button class="btn" onClick=${() => {
+              let cfg = {};
+              try { cfg = JSON.parse(form.config || "{}"); } catch (e) { setErr("Invalid JSON config"); return; }
+              api("/jobs", { method: "POST", body: JSON.stringify({ ...form, config: cfg }) }).then(load).catch((e) => setErr(e.message));
+            }}>Create</button>
+          </div>
+          <div class="panel">
+            <h2 style=${{ marginBottom: "12px", fontSize: "14px" }}>Scheduler jobs</h2>
+            <table><thead><tr>
+              <th>Name</th><th>Regulator</th><th>Cron</th><th>Enabled</th><th>Last</th><th>Next</th><th></th>
+            </tr></thead><tbody>
+              ${jobs.map((j) => html`<tr key=${j.id}>
+                <td>${j.name}</td>
+                <td class="mono">${j.regulator}</td>
+                <td class="mono">${j.schedule_cron}</td>
+                <td>${j.enabled ? "yes" : "no"}</td>
+                <td class="muted">${j.last_status || "—"} ${j.last_run || ""}</td>
+                <td class="muted">${j.next_run || "—"}</td>
+                <td>
+                  <button class="btn" onClick=${() => api("/jobs/" + j.id + "/run", { method: "POST" }).then(load).catch((e) => setErr(e.message))}>Run</button>
+                  ${" "}
+                  <button class="btn btn-danger" onClick=${() => { if (!confirm("Delete job?")) return; api("/jobs/" + j.id, { method: "DELETE" }).then(load).catch((e) => setErr(e.message)); }}>Delete</button>
+                </td>
+              </tr>`)}
+            </tbody></table>
+          </div>
+        </div>
+      `;
+    }
+
+    function ScrapeRuns() {
+      const [items, setItems] = useState([]);
+      const [err, setErr] = useState(null);
+      const [page, setPage] = useState(1);
+      const [pipe, setPipe] = useState(null);
+      const load = useCallback(() => {
+        setErr(null);
+        api("/scrape-runs?page=" + page + "&page_size=30").then((d) => setItems(d.items || [])).catch((e) => setErr(String(e.message)));
+        api("/pipeline-status").then(setPipe).catch(() => {});
+      }, [page]);
+      useEffect(() => { load(); const id = setInterval(load, 5000); return () => clearInterval(id); }, [load]);
+      return html`
+        <div>
+          ${err && html`<div class="error-banner">${err}</div>`}
+          ${pipe && html`<div class="panel muted">
+            Pipeline: ${pipe.running ? html`<span class="ok">running</span>` : "idle"}
+            ${pipe.status ? " · " + pipe.status : ""}
+            ${pipe.progress ? html`<pre class="json">${JSON.stringify(pipe.progress, null, 2)}</pre>` : null}
+          </div>`}
+          <div class="panel">
+            <button class="btn" style=${{ marginBottom: "10px" }} onClick=${() => load()}>Refresh</button>
+            <table><thead><tr><th>Started</th><th>Status</th><th>Progress</th><th>Rules</th><th>Error</th></tr></thead><tbody>
+              ${items.map((r) => html`<tr key=${r.id}>
+                <td class="mono">${r.started_at}</td>
+                <td>${r.status}</td>
+                <td><pre class="json" style=${{ maxHeight: "80px" }}>${JSON.stringify(r.progress || {}, null, 2)}</pre></td>
+                <td>${r.rules_done}/${r.rules_total}</td>
+                <td class="muted">${r.error_message || "—"}</td>
+              </tr>`)}
+            </tbody></table>
+          </div>
+        </div>
+      `;
+    }
+
+    function Reanalyze() {
+      const [err, setErr] = useState(null);
+      const [rules, setRules] = useState("");
+      const [msg, setMsg] = useState(null);
+      return html`
+        <div class="panel">
+          ${err && html`<div class="error-banner">${err}</div>`}
+          ${msg && html`<div class="ok" style=${{ marginBottom: "10px" }}>${msg}</div>`}
+          <p class="muted" style=${{ marginBottom: "12px" }}>Re-run FINRA scrape + AI for all rules (force), or comma-separated rule numbers.</p>
+          <div class="row">
+            <button class="btn" onClick=${() => {
+              setErr(null); setMsg(null);
+              api("/reanalyze", { method: "POST", body: JSON.stringify({ regulator: "FINRA", force_all: true }) })
+                .then((d) => setMsg(JSON.stringify(d)))
+                .catch((e) => setErr(e.message));
+            }}>Force reanalyze all FINRA rules</button>
+          </div>
+          <div class="row">
+            <div><label>Rule numbers (comma-separated)</label>
+              <input placeholder="2110, 2210" value=${rules} onChange=${(e) => setRules(e.target.value)} />
+            </div>
+            <button class="btn" style=${{ alignSelf: "flex-end" }} onClick=${() => {
+              setErr(null); setMsg(null);
+              const rlist = rules.split(",").map((s) => s.trim()).filter(Boolean);
+              if (!rlist.length) { setErr("Enter at least one rule number"); return; }
+              api("/reanalyze", { method: "POST", body: JSON.stringify({ regulator: "FINRA", rule_numbers: rlist }) })
+                .then((d) => setMsg(JSON.stringify(d)))
+                .catch((e) => setErr(e.message));
+            }}>Reanalyze selected</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function Seed() {
+      const [data, setData] = useState(null);
+      const [err, setErr] = useState(null);
+      const load = () => api("/seed-status").then(setData).catch((e) => setErr(e.message));
+      useEffect(() => { load(); }, []);
+      return html`
+        <div>
+          ${err && html`<div class="error-banner">${err}</div>`}
+          <div class="panel">
+            <button class="btn" onClick=${load}>Refresh counts</button>
+            ${data && html`<pre class="json" style=${{ marginTop: "12px" }}>${JSON.stringify(data, null, 2)}</pre>`}
+          </div>
+        </div>
+      `;
+    }
+
+    function AuditPane() {
+      const [data, setData] = useState({ items: [] });
+      const [err, setErr] = useState(null);
+      const [page, setPage] = useState(1);
+      const load = () => {
+        setErr(null);
+        api("/audit?page=" + page + "&page_size=40").then(setData).catch((e) => setErr(e.message));
+      };
+      useEffect(() => { load(); }, [page]);
+      return html`
+        <div>
+          ${err && html`<div class="error-banner">${err}</div>`}
+          <div class="panel">
+            <button class="btn" style=${{ marginBottom: "10px" }} onClick=${load}>Refresh</button>
+            <p class="muted">Total: ${data.total || 0}</p>
+            <table><thead><tr><th>Time</th><th>Action</th><th>Entity</th><th>Description</th></tr></thead><tbody>
+              ${(data.items || []).map((a) => html`<tr key=${a.id}>
+                <td class="mono">${a.timestamp}</td>
+                <td>${a.action}</td>
+                <td>${a.entity_type} ${a.entity_id || ""}</td>
+                <td>${a.description || "—"}</td>
+              </tr>`)}
+            </tbody></table>
+          </div>
+        </div>
+      `;
+    }
+
+    function Migrate() {
+      const [err, setErr] = useState(null);
+      const [out, setOut] = useState(null);
+      return html`
+        <div class="panel">
+          ${err && html`<div class="error-banner">${err}</div>`}
+          <p class="muted" style=${{ marginBottom: "12px" }}>Runs schema migrations and framework seed (idempotent).</p>
+          <button class="btn" onClick=${() => {
+            setErr(null);
+            api("/migrate", { method: "POST" }).then(setOut).catch((e) => setErr(e.message));
+          }}>Run migrate + seed</button>
+          ${out && html`<pre class="json" style=${{ marginTop: "12px" }}>${JSON.stringify(out, null, 2)}</pre>`}
+        </div>
+      `;
+    }
+
+    function App() {
+      const [tab, setTab] = useState("jobs");
+      return html`
+        <header>
+          <h1>CLHEAR Admin</h1>
+          <nav>
+            ${["jobs", "runs", "reanalyze", "seed", "audit", "migrate"].map((t) =>
+              html`<button key=${t} class=${tab === t ? "active" : ""} onClick=${() => setTab(t)}>${t}</button>`
+            )}
+          </nav>
+        </header>
+        <main>
+          ${tab === "jobs" && html`<${Jobs} />`}
+          ${tab === "runs" && html`<${ScrapeRuns} />`}
+          ${tab === "reanalyze" && html`<${Reanalyze} />`}
+          ${tab === "seed" && html`<${Seed} />`}
+          ${tab === "audit" && html`<${AuditPane} />`}
+          ${tab === "migrate" && html`<${Migrate} />`}
+        </main>
+      `;
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(html`<${App} />`);
+  </script>
+</body>
+</html>

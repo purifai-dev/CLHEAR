@@ -37,6 +37,7 @@ class SchedulerService:
         """Start the scheduler and register all enabled jobs from DB."""
         if self._started:
             return
+        self._ensure_default_finra_scrape_job()
         self._load_jobs_from_db()
         self.scheduler.start()
         self._started = True
@@ -55,6 +56,39 @@ class SchedulerService:
             self.scheduler.shutdown(wait=False)
             self._started = False
             logger.info("Scheduler service stopped")
+
+    def _ensure_default_finra_scrape_job(self):
+        """If no enabled FINRA job with finra_scrape pipeline exists, create daily 6:00 UTC."""
+        try:
+            with self.engine.connect() as conn:
+                row = conn.execute(
+                    sql_text(
+                        """
+                        SELECT COUNT(*) FROM scheduler_jobs
+                        WHERE enabled = true AND UPPER(regulator) = 'FINRA'
+                          AND config::text ILIKE '%finra_scrape%'
+                        """
+                    )
+                ).scalar()
+                cnt = int(row or 0)
+        except Exception as e:
+            logger.warning("Could not check scheduler_jobs for default FINRA job: %s", e)
+            return
+
+        if cnt > 0:
+            return
+
+        try:
+            self.create_job(
+                "Daily FINRA rulebook scrape",
+                "FINRA",
+                "0 6 * * *",
+                True,
+                {"pipeline": "finra_scrape"},
+            )
+            logger.info("Created default FINRA finra_scrape scheduler job")
+        except Exception as e:
+            logger.warning("Could not create default FINRA job: %s", e)
 
     def _load_jobs_from_db(self):
         """Load all enabled jobs from the database and register them."""
@@ -229,25 +263,20 @@ class SchedulerService:
         starts the async FINRA web scrape + AI analysis pipeline (same as POST /api/scrape/finra).
         """
         config = config or {}
-        if config.get("pipeline") == "finra_scrape" and regulator.upper() == "FINRA":
-            from services.scrape_orchestrator import ScrapeOrchestrator
+        if config.get("pipeline") == "finra_scrape":
+            from services.scraper_registry import run_pipeline_for_regulator
 
-            orch = ScrapeOrchestrator(self.engine, self.audit)
-            try:
-                out = orch.start_finra_pipeline(
-                    max_rules=config.get("max_rules"),
-                    force_reanalyze=bool(config.get("force_reanalyze")),
-                )
+            out = run_pipeline_for_regulator(regulator, self.engine, self.audit, config)
+            if out.get("run_id"):
                 return {
                     "pipeline": "finra_scrape",
                     "started": True,
                     "run_id": out.get("run_id"),
                     "timestamp": datetime.utcnow().isoformat(),
                 }
-            except RuntimeError as e:
+            if out.get("error") is not None or out.get("started") is False:
                 return {
-                    "pipeline": "finra_scrape",
-                    "error": str(e),
+                    **out,
                     "timestamp": datetime.utcnow().isoformat(),
                 }
 

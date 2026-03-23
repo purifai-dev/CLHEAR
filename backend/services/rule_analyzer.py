@@ -8,11 +8,12 @@ import json
 import logging
 import os
 import re
+import time
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
-ANALYSIS_VERSION = os.getenv("CLHEAR_ANALYSIS_VERSION", "1.0")
+ANALYSIS_VERSION = os.getenv("CLHEAR_ANALYSIS_VERSION", "1.1")
 MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514")
 
 TYPE_TO_CODE = {
@@ -51,6 +52,17 @@ def _parse_json_block(text: str) -> Any:
         raise
 
 
+PILLAR_LIST = """pillar_id must be an integer 1-18 (CLHEAR industry pillars for broker-dealers):
+1=Governance and Organizational Structure, 2=Licensing and Registration, 3=Client Onboarding/KYC/CIP,
+4=Suitability and Best Interest, 5=Product Governance and Approval, 6=Conduct of Business and Conflicts,
+7=Market Conduct and Trading Controls, 8=Financial Crime and Sanctions, 9=Communications and Marketing Compliance,
+10=Capital Adequacy and Financial Resilience, 11=Record Keeping and Books and Records,
+12=Operational Resilience and Business Continuity, 13=Outsourcing and Third Party Risk,
+14=Regulatory Reporting and Disclosures, 15=Complaints Handling and Client Outcomes,
+16=Internal Controls and Compliance Monitoring, 17=Internal Audit and Independent Review,
+18=Regulatory Engagement and Change Management"""
+
+
 def build_prompt(rule_number: str, rule_title: str, raw_text: str) -> str:
     return f"""You are a securities compliance analyst. Read the FINRA rule below and extract EVERY distinct regulatory requirement or compliance-relevant fact that a broker-dealer or associated person must consider.
 
@@ -71,9 +83,7 @@ Also assign:
 - importance_reasoning: 2-4 sentences citing regulatory impact
 - evidence_excerpt: a SHORT verbatim quote from the rule text supporting this item (must be copied from the rule text below)
 - category: short label e.g. Registration, Supervision, Trading, Communications, Financial, Cybersecurity
-- pillar_id: integer 1-6 where:
-  1=Supervision & Governance, 2=Business Conduct & Customer Protection, 3=Financial & Operational Integrity,
-  4=Market Integrity & Trading, 5=Reporting & Recordkeeping, 6=Dispute Resolution & Enforcement
+- {PILLAR_LIST}
 - tags: array of short strings (topics)
 - applicability: JSON object with optional keys firm_types, products, customer_types (arrays of strings; use [] if unknown)
 - rule_reference: precise citation if possible e.g. "FINRA Rule {rule_number}(a)(1)"
@@ -120,15 +130,26 @@ def analyze_rule_text(
         client = anthropic.Anthropic(api_key=api_key)
 
     prompt = build_prompt(rule_number, rule_title, raw_text)
-    message = client.messages.create(
-        model=MODEL,
-        max_tokens=8192,
-        messages=[{"role": "user", "content": prompt}],
-    )
     text_out = ""
-    for block in message.content:
-        if block.type == "text":
-            text_out += block.text
+    delays = [2, 4, 8]
+    for attempt, delay in enumerate([0] + delays):
+        if attempt > 0:
+            time.sleep(delay)
+        try:
+            message = client.messages.create(
+                model=MODEL,
+                max_tokens=8192,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            for block in message.content:
+                if block.type == "text":
+                    text_out += block.text
+            break
+        except Exception as e:
+            logger.warning("Anthropic API attempt %s failed for rule %s: %s", attempt + 1, rule_number, e)
+            if attempt >= len(delays):
+                logger.error("Anthropic API exhausted retries for rule %s", rule_number)
+                return [], ANALYSIS_VERSION
 
     try:
         arr = _parse_json_block(text_out)
@@ -163,6 +184,13 @@ def analyze_rule_text(
         seq = per_type[it]
         code = f"FINRA-{base_rule}-{TYPE_TO_CODE[it]}-{seq:02d}"
 
+        pid = obj.get("pillar_id")
+        try:
+            pn = int(pid)
+            pn = max(1, min(18, pn))
+        except (TypeError, ValueError):
+            pn = 1
+
         payload = {
             "item_code": code,
             "regulator": "FINRA",
@@ -174,7 +202,7 @@ def analyze_rule_text(
             "description": obj.get("description") or "",
             "summary": obj.get("summary") or "",
             "category": obj.get("category"),
-            "pillar_id": obj.get("pillar_id"),
+            "pillar_id": pn,
             "importance": (obj.get("importance") or "medium").lower(),
             "importance_reasoning": obj.get("importance_reasoning") or "",
             "evidence_excerpt": obj.get("evidence_excerpt") or "",

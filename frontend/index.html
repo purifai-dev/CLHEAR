@@ -1160,7 +1160,7 @@ function RegulatoryItemsView() {
           <option value="">All importance</option>
           ${(filterOptions.importances || []).map((x) => html`<option key=${x} value=${x}>${x}</option>`)}
         </select>
-        <input type="text" placeholder="Pillar 1-6" value=${filters.pillar_id}
+        <input type="text" placeholder="Pillar 1-18" value=${filters.pillar_id}
           onInput=${(e) => setFilter('pillar_id', e.target.value)} style=${{ width: '90px' }} />
         <select value=${filters.sort_by} onChange=${(e) => setFilter('sort_by', e.target.value)}>
           <option value="item_code">Sort: code</option>
@@ -1786,6 +1786,162 @@ function NewsView() {
 }
 
 // ============================================================
+// Program & compliance framework views
+// ============================================================
+
+function ProgramOverviewView() {
+  const [data, setData] = useState(null);
+  const [err, setErr] = useState(null);
+  useEffect(() => {
+    fetchJSON('/api/reference/framework').then(setData).catch((e) => setErr(e.message));
+  }, []);
+  if (err) return html`<div class="error-banner">${err}</div>`;
+  if (!data) return html`<div style=${{ padding: '24px', color: 'var(--text-dim)' }}>Loading framework…</div>`;
+  const c = data.counts || {};
+  return html`
+    <div>
+      <div class="section-header">CLHEAR program framework</div>
+      <p style=${{ color: 'var(--text-dim)', marginBottom: '20px', maxWidth: '720px', lineHeight: 1.6 }}>
+        Seven verticals, 18 industry pillars, 39 roles, 20 governance bodies, and 22 reference standards — aligned with the CLHEAR whitepaper.
+      </p>
+      <div class="stat-grid" style=${{ marginBottom: '24px' }}>
+        <${StatCard} val=${c.regulators ?? 0} lbl="Regulators" color="var(--accent)" />
+        <${StatCard} val=${c.reference_standards ?? 0} lbl="Reference standards" color="var(--green)" />
+        <${StatCard} val=${c.compliance_roles ?? 0} lbl="Compliance roles" color="var(--yellow)" />
+        <${StatCard} val=${c.governance_bodies ?? 0} lbl="Governance bodies" color="var(--purple)" />
+      </div>
+      <div class="breakdown-grid">
+        <div class="breakdown-card">
+          <h3>Verticals (${(data.verticals || []).length})</h3>
+          <table><tbody>
+            ${(data.verticals || []).map((v) => html`<tr key=${v.id}><td>${v.vertical_number}. ${v.name}</td></tr>`)}
+          </tbody></table>
+        </div>
+        <div class="breakdown-card">
+          <h3>Pillars (sample)</h3>
+          <table><tbody>
+            ${(data.pillars || []).slice(0, 8).map((p) => html`<tr key=${p.pillar_number}><td>${p.pillar_number}. ${p.name}</td></tr>`)}
+          </tbody></table>
+          ${(data.pillars || []).length > 8 ? html`<div style=${{ fontSize: '12px', color: 'var(--text-dim)', marginTop: '8px' }}>… and ${data.pillars.length - 8} more</div>` : null}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function ControlsProgramView() {
+  const [items, setItems] = useState([]);
+  const [fw, setFw] = useState([]);
+  const [err, setErr] = useState(null);
+  useEffect(() => {
+    Promise.all([
+      fetchJSON('/api/program/frameworks'),
+      fetchJSON('/api/program/controls'),
+    ]).then(([f, c]) => { setFw(f.items || []); setItems(c.items || []); }).catch((e) => setErr(e.message));
+  }, []);
+  if (err) return html`<div class="error-banner">${err}</div>`;
+  return html`
+    <div>
+      <div class="section-header">Controls</div>
+      <p style=${{ color: 'var(--text-dim)', marginBottom: '16px' }}>Firm controls mapped to regulatory items (create a framework first via API).</p>
+      <div style=${{ marginBottom: '12px', fontSize: '13px' }}>Frameworks: ${fw.length ? fw.map((x) => x.name).join(', ') : 'none yet'}</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Code</th><th>Title</th><th>Pillar</th><th>Status</th></tr></thead>
+          <tbody>
+            ${items.length === 0 ? html`<tr><td colspan="4"><div class="empty-state">No controls yet</div></td></tr>`
+              : items.map((r) => html`<tr key=${r.id}><td class="code">${r.control_code}</td><td>${r.title}</td><td>${r.pillar_number ?? '--'}</td><td>${r.status || '--'}</td></tr>`)}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function RolesReferenceView() {
+  const [data, setData] = useState({ items: [], total: 0 });
+  const [err, setErr] = useState(null);
+  useEffect(() => {
+    fetchJSON('/api/reference/roles?page=1&page_size=100').then(setData).catch((e) => setErr(e.message));
+  }, []);
+  if (err) return html`<div class="error-banner">${err}</div>`;
+  return html`
+    <div>
+      <div class="section-header">CLHEAR 39 roles</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>#</th><th>Title</th><th>Line</th><th>Reports to</th><th>Tier</th></tr></thead>
+          <tbody>
+            ${(data.items || []).map((r) => html`
+              <tr key=${r.id}>
+                <td>${r.role_number}</td>
+                <td>${r.title}</td>
+                <td class="dimmed">${r.line_of_defence || '--'}</td>
+                <td class="dimmed" style=${{ fontSize: '12px' }}>${r.reports_to || '--'}</td>
+                <td>${r.tier || '--'}</td>
+              </tr>
+            `)}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function GovernanceReferenceView() {
+  const [data, setData] = useState({ items: [] });
+  const [err, setErr] = useState(null);
+  useEffect(() => {
+    fetchJSON('/api/reference/governance').then(setData).catch((e) => setErr(e.message));
+  }, []);
+  if (err) return html`<div class="error-banner">${err}</div>`;
+  return html`
+    <div>
+      <div class="section-header">Governance bodies</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>#</th><th>Body</th><th>Tier</th><th>Chair</th><th>Meetings</th></tr></thead>
+          <tbody>
+            ${(data.items || []).map((g) => html`
+              <tr key=${g.id}>
+                <td>${g.body_number}</td>
+                <td>${g.name}</td>
+                <td class="dimmed">${g.tier}</td>
+                <td style=${{ fontSize: '12px' }}>${g.chair_title || '—'}</td>
+                <td class="dimmed" style=${{ fontSize: '12px' }}>${g.meeting_frequency || '--'}</td>
+              </tr>
+            `)}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function RisksProgramView() {
+  const [items, setItems] = useState([]);
+  const [err, setErr] = useState(null);
+  useEffect(() => {
+    fetchJSON('/api/program/risks').then((r) => setItems(r.items || [])).catch((e) => setErr(e.message));
+  }, []);
+  if (err) return html`<div class="error-banner">${err}</div>`;
+  return html`
+    <div>
+      <div class="section-header">Risk register</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Code</th><th>Title</th><th>Pillar</th><th>Score</th></tr></thead>
+          <tbody>
+            ${items.length === 0 ? html`<tr><td colspan="4"><div class="empty-state">No risks recorded yet</div></td></tr>`
+              : items.map((r) => html`<tr key=${r.id}><td class="code">${r.risk_code}</td><td>${r.title}</td><td>${r.pillar_number ?? '--'}</td><td>${r.risk_score ?? '--'}</td></tr>`)}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+// ============================================================
 // App
 // ============================================================
 
@@ -1840,6 +1996,11 @@ function App() {
           </button>
           <button class=${tab === 'scheduler' ? 'active' : ''} onClick=${() => setTab('scheduler')}>Scheduler</button>
           <button class=${tab === 'audit' ? 'active' : ''} onClick=${() => setTab('audit')}>Audit Log</button>
+          <button class=${tab === 'program' ? 'active' : ''} onClick=${() => setTab('program')}>Program</button>
+          <button class=${tab === 'controls' ? 'active' : ''} onClick=${() => setTab('controls')}>Controls</button>
+          <button class=${tab === 'roles' ? 'active' : ''} onClick=${() => setTab('roles')}>Roles</button>
+          <button class=${tab === 'governance' ? 'active' : ''} onClick=${() => setTab('governance')}>Governance</button>
+          <button class=${tab === 'risks' ? 'active' : ''} onClick=${() => setTab('risks')}>Risks</button>
         </nav>
       </header>
       <main>
@@ -1850,6 +2011,11 @@ function App() {
         ${tab === 'news' && html`<${NewsView} />`}
         ${tab === 'scheduler' && html`<${SchedulerView} />`}
         ${tab === 'audit' && html`<${AuditView} filterOptions=${filterOptions} />`}
+        ${tab === 'program' && html`<${ProgramOverviewView} />`}
+        ${tab === 'controls' && html`<${ControlsProgramView} />`}
+        ${tab === 'roles' && html`<${RolesReferenceView} />`}
+        ${tab === 'governance' && html`<${GovernanceReferenceView} />`}
+        ${tab === 'risks' && html`<${RisksProgramView} />`}
       </main>
     </div>
   `;

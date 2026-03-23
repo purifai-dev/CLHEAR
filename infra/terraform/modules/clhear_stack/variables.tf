@@ -145,3 +145,22 @@ variable "anthropic_secret_name" {
   type        = string
   default     = ""
 }
+
+variable "clhear_run_migrations" {
+  description = "When true, ECS sets CLHEAR_RUN_MIGRATIONS so the API runs idempotent schema + seed at startup."
+  type        = string
+  default     = "true"
+}
+
+variable "clhear_admin_user" {
+  description = "HTTP Basic user for /admin (CLHEAR_ADMIN_USER). Empty disables admin auth until set."
+  type        = string
+  default     = ""
+}
+
+variable "clhear_admin_pass" {
+  description = "HTTP Basic password for /admin (CLHEAR_ADMIN_PASS)."
+  type        = string
+  default     = ""
+  sensitive   = true
+}

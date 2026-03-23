@@ -122,3 +122,20 @@ variable "anthropic_secret_name" {
   type        = string
   default     = ""
 }
+
+variable "clhear_run_migrations" {
+  type    = string
+  default = "true"
+}
+
+variable "clhear_admin_user" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+
+variable "clhear_admin_pass" {
+  type      = string
+  default   = ""
+  sensitive = true
+}

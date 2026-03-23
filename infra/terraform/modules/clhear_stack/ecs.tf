@@ -39,6 +39,9 @@ locals {
       { name = "SMTP_PORT", value = var.smtp_port },
       { name = "SMTP_USER", value = var.smtp_user },
       { name = "SMTP_FROM", value = var.smtp_from },
+      { name = "CLHEAR_RUN_MIGRATIONS", value = var.clhear_run_migrations },
+      { name = "CLHEAR_ADMIN_USER", value = var.clhear_admin_user },
+      { name = "CLHEAR_ADMIN_PASS", value = var.clhear_admin_pass },
     ],
     length(aws_secretsmanager_secret.smtp_pass) > 0 ? [] : [{ name = "SMTP_PASS", value = "" }]
   )

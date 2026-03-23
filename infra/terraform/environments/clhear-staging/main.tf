@@ -39,6 +39,10 @@ module "clhear" {
 
   anthropic_secret_name = var.anthropic_secret_name
 
+  clhear_run_migrations = var.clhear_run_migrations
+  clhear_admin_user     = var.clhear_admin_user
+  clhear_admin_pass     = var.clhear_admin_pass
+
   tags = {
     Environment = var.environment
   }

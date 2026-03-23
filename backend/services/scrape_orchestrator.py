@@ -9,7 +9,7 @@ import os
 import threading
 import uuid
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 
 from sqlalchemy.sql import text as sql_text
 
@@ -40,6 +40,7 @@ class ScrapeOrchestrator:
     def __init__(self, engine, audit_service=None):
         self.engine = engine
         self.audit = audit_service
+        self._cached_finra_regulator_id: Optional[str] = None
 
     def is_running(self) -> bool:
         global _pipeline_running, _active_thread
@@ -53,6 +54,7 @@ class ScrapeOrchestrator:
         self,
         max_rules: Optional[int] = None,
         force_reanalyze: bool = False,
+        rule_numbers: Optional[Sequence[str]] = None,
     ) -> dict:
         """
         Start background pipeline. Returns { run_id, status } or raises if already running.
@@ -69,7 +71,7 @@ class ScrapeOrchestrator:
         def worker():
             global _pipeline_running, _active_thread
             try:
-                self._run_finra_pipeline(run_id, max_rules, force_reanalyze)
+                self._run_finra_pipeline(run_id, max_rules, force_reanalyze, rule_numbers)
             finally:
                 with _pipeline_lock:
                     _pipeline_running = False
@@ -166,6 +168,7 @@ class ScrapeOrchestrator:
         run_id: str,
         max_rules: Optional[int],
         force_reanalyze: bool,
+        rule_numbers: Optional[Sequence[str]] = None,
     ) -> None:
         session = _session()
         items_total = 0
@@ -191,6 +194,9 @@ class ScrapeOrchestrator:
                 )
 
             pairs = discover_rule_urls(session, on_progress=prog)
+            if rule_numbers:
+                wanted = {str(x).strip() for x in rule_numbers if str(x).strip()}
+                pairs = [(rn, url) for rn, url in pairs if rn in wanted]
             if max_rules is not None:
                 pairs = pairs[: max(0, int(max_rules))]
 
@@ -252,6 +258,7 @@ class ScrapeOrchestrator:
                     items,
                     scraped_at=datetime.utcnow(),
                     analyzed_at=datetime.utcnow(),
+                    run_id=run_id,
                 )
                 items_total += n_ins
 
@@ -408,14 +415,84 @@ class ScrapeOrchestrator:
             conn.commit()
             return "updated", None
 
+    def _resolve_finra_regulator_id(self) -> Optional[str]:
+        if self._cached_finra_regulator_id is not None:
+            return self._cached_finra_regulator_id or None
+        with self.engine.connect() as conn:
+            row = conn.execute(
+                sql_text("SELECT id FROM regulators WHERE code = 'FINRA' LIMIT 1")
+            ).fetchone()
+        if row:
+            self._cached_finra_regulator_id = str(row[0])
+        else:
+            self._cached_finra_regulator_id = ""
+        return self._cached_finra_regulator_id or None
+
     def _replace_items_for_rule(
         self,
         rule_number: str,
         items: list[dict],
         scraped_at: datetime,
         analyzed_at: datetime,
+        run_id: Optional[str] = None,
     ) -> int:
+        rid = self._resolve_finra_regulator_id()
         with self.engine.connect() as conn:
+            old_cnt = conn.execute(
+                sql_text(
+                    """
+                    SELECT COUNT(*) FROM regulatory_items
+                    WHERE regulator = 'FINRA' AND source_rule_number = :rn
+                    """
+                ),
+                {"rn": rule_number},
+            ).scalar()
+            old_cnt = int(old_cnt or 0)
+
+            if old_cnt > 0 and len(items) < max(1, int(old_cnt * 0.5)):
+                logger.warning(
+                    "Claude returned %d items for rule %s vs %d previously — possible partial response; keeping existing rows",
+                    len(items),
+                    rule_number,
+                    old_cnt,
+                )
+                return 0
+
+            # Snapshot hashes for versioning before delete
+            old_rows = conn.execute(
+                sql_text(
+                    """
+                    SELECT id, item_code, content_hash FROM regulatory_items
+                    WHERE regulator = 'FINRA' AND source_rule_number = :rn
+                    """
+                ),
+                {"rn": rule_number},
+            ).fetchall()
+
+            batch_id = uuid.uuid4() if run_id else None
+            for row in old_rows:
+                oid, icode, ohash = row[0], row[1], row[2]
+                conn.execute(
+                    sql_text(
+                        """
+                        INSERT INTO regulatory_item_versions
+                        (regulatory_item_id, version_number, previous_hash, new_hash, diff_summary,
+                         changed_fields, source_rule_number, regulator, batch_id)
+                        VALUES
+                        (CAST(:iid AS uuid), 1, :phash, NULL, :summary,
+                         CAST(:cf AS jsonb), :rn, 'FINRA', :bid)
+                        """
+                    ),
+                    {
+                        "iid": str(oid),
+                        "phash": ohash,
+                        "summary": "Superseded by re-analysis",
+                        "cf": json.dumps({"item_code": icode, "run_id": run_id}),
+                        "rn": rule_number,
+                        "bid": str(batch_id) if batch_id else None,
+                    },
+                )
+
             conn.execute(
                 sql_text(
                     """
@@ -432,18 +509,19 @@ class ScrapeOrchestrator:
                     sql_text(
                         """
                         INSERT INTO regulatory_items
-                        (item_code, regulator, item_type, rule_reference, source_rule_number,
+                        (item_code, regulator, regulator_id, item_type, rule_reference, source_rule_number,
                          source_url, title, description, summary, category, pillar_id,
                          importance, importance_reasoning, evidence_excerpt, tags, applicability,
                          content_hash, analysis_version, scraped_at, analyzed_at, created_at, metadata)
                         VALUES
-                        (:item_code, :regulator, :item_type, :rule_reference, :source_rule_number,
+                        (:item_code, :regulator, CAST(:regulator_id AS uuid), :item_type, :rule_reference, :source_rule_number,
                          :source_url, :title, :description, :summary, :category, :pillar_id,
                          :importance, :importance_reasoning, :evidence_excerpt,
                          CAST(:tags AS jsonb), CAST(:applicability AS jsonb),
                          :content_hash, :analysis_version, :scraped_at, :analyzed_at, :created_at,
                          CAST(:metadata AS jsonb))
                         ON CONFLICT (item_code) DO UPDATE SET
+                         regulator_id = COALESCE(EXCLUDED.regulator_id, regulatory_items.regulator_id),
                          item_type = EXCLUDED.item_type,
                          rule_reference = EXCLUDED.rule_reference,
                          source_rule_number = EXCLUDED.source_rule_number,
@@ -469,6 +547,7 @@ class ScrapeOrchestrator:
                     {
                         "item_code": it["item_code"],
                         "regulator": it["regulator"],
+                        "regulator_id": rid,
                         "item_type": it["item_type"],
                         "rule_reference": it.get("rule_reference"),
                         "source_rule_number": it.get("source_rule_number"),
@@ -528,3 +607,18 @@ class ScrapeOrchestrator:
             "metadata": _parse_meta(row[13]),
             "running": self.is_running(),
         }
+
+
+def run_finra_pipeline_job(engine, audit, config: dict) -> dict:
+    """Entry point for scheduler / scraper_registry (FINRA scrape + AI)."""
+    orch = ScrapeOrchestrator(engine, audit)
+    rn = config.get("rule_numbers")
+    rule_numbers = list(rn) if isinstance(rn, (list, tuple)) else None
+    try:
+        return orch.start_finra_pipeline(
+            max_rules=config.get("max_rules"),
+            force_reanalyze=bool(config.get("force_reanalyze")),
+            rule_numbers=rule_numbers,
+        )
+    except RuntimeError as e:
+        return {"pipeline": "finra_scrape", "error": str(e), "started": False}
