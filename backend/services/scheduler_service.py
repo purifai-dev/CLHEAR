@@ -263,7 +263,9 @@ class SchedulerService:
         starts the async FINRA web scrape + AI analysis pipeline (same as POST /api/scrape/finra).
         """
         config = config or {}
-        if config.get("pipeline") == "finra_scrape":
+        # Must match scraper_registry (case-insensitive); strict "==" caused silent fallback to static loader.
+        pipeline = (config.get("pipeline") or "").strip().lower()
+        if pipeline == "finra_scrape":
             from services.scraper_registry import run_pipeline_for_regulator
 
             out = run_pipeline_for_regulator(regulator, self.engine, self.audit, config)
@@ -279,6 +281,13 @@ class SchedulerService:
                     **out,
                     "timestamp": datetime.utcnow().isoformat(),
                 }
+            # Do not fall through to RegulatoryLoader — FINRA path was requested.
+            return {
+                **out,
+                "pipeline": "finra_scrape",
+                "timestamp": datetime.utcnow().isoformat(),
+                "warning": "FINRA pipeline returned an unexpected response; check scrape_runs and logs.",
+            }
 
         from services.regulatory_loader import RegulatoryLoader
 
